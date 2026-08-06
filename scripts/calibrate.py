@@ -20,8 +20,9 @@ W, _, P = load()
 CONDS = {
     "repouso": {},
     "explorar": {"DNp09": 11.0},
+    "fluxo ESQ": {"DNp09": 11.0, "H2_L": 14.0},
+    "fluxo DIR": {"DNp09": 11.0, "H2_R": 14.0},
     "loom ESQ": {"DNp09": 11.0, "LPLC2_L": 12.0},
-    "loom DIR": {"DNp09": 11.0, "LPLC2_R": 12.0},
 }
 
 
@@ -34,7 +35,8 @@ def probe(w_syn: float, inj_map: dict) -> tuple[float, dict, float]:
     b.run(150.0, inject=inj)                       # warm-up
     b.run(200.0, inject=inj)                       # medida
     net = float(b.rate.mean()) / b.dt * 1000
-    dns = {k: b.pop_rate(P.get(k, [])) * 1000 for k in ("DNp09", "DNa02_L", "DNa02_R", "MDN")}
+    dns = {k: b.pop_rate(P.get(k, [])) * 1000 for k in ("DN_L", "DN_R", "MDN")}
+    dns["assim"] = ((dns["DN_R"] - dns["DN_L"]) / max(dns["DN_R"] + dns["DN_L"], 1e-9))
     b.run(300.0, inject=None)                      # estimulo removido
     return net, dns, float(b.rate.mean()) / b.dt * 1000
 
@@ -45,6 +47,6 @@ if __name__ == "__main__":
         print(f"\n=== w_syn = {w_syn} ===")
         for name, inj_map in CONDS.items():
             net, d, tail = probe(w_syn, inj_map)
-            print(f"  {name:<9} rede={net:6.1f}Hz  DNp09={d['DNp09']:6.1f}  "
-                  f"DNa02 L/R={d['DNa02_L']:6.1f}/{d['DNa02_R']:6.1f}  MDN={d['MDN']:5.1f}"
+            print(f"  {name:<10} rede={net:6.1f}Hz  DN L/R={d['DN_L']:6.2f}/{d['DN_R']:6.2f}  "
+                  f"assim={d['assim']:+.3f}  MDN={d['MDN']:5.1f}"
                   f"   -> sem estimulo: {tail:5.1f}Hz")

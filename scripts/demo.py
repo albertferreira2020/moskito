@@ -40,12 +40,17 @@ log = []
 t0 = time.perf_counter()
 for i in range(a.ticks):
     d = body.drives
-    # Sobressalto ocasional, mais provavel quando o bicho esta' se movendo.
-    loom_l = loom_r = 0.0
+    # Parede/obstaculo de um lado -> fluxo optico daquele lado (steering).
+    # Sobressalto ocasional -> looming (reflexo de parada).
+    flow_l = flow_r = loom_l = loom_r = 0.0
+    if rng.random() < 0.35:
+        side = rng.random() < 0.5
+        flow_l, flow_r = (1.0, 0.0) if side else (0.0, 1.0)
     if rng.random() < 0.04:
-        (loom_l, loom_r) = (1.0, 0.0) if rng.random() < 0.5 else (0.0, 1.0)
+        loom_l, loom_r = (1.0, 0.0) if rng.random() < 0.5 else (0.0, 1.0)
 
-    body.sense(looming_left=loom_l, looming_right=loom_r, odor=d.hunger)
+    body.sense(flow_left=flow_l, flow_right=flow_r,
+               looming_left=loom_l, looming_right=loom_r, odor=d.hunger)
     vl, vr = body.act(a.brain_ms)
 
     speed = abs(vl + vr) / 2      # translacao liquida: girar no lugar nao e' "andar"

@@ -22,8 +22,14 @@ NT_SIGN = {"ACH": 1.0, "GABA": -1.0, "GLUT": -1.0, "DA": 0.0, "SER": 0.0, "OCT":
 
 # Portas de entrada e saida do cerebro.
 # Saida: neuronios descendentes (o barramento motor da mosca).
-# Entrada: neuronios de projecao visual do lobulo optico.
-PORT_TYPES = ("DNa02", "DNa01", "DNp09", "MDN", "LPLC2", "LC11", "LC6", "LC16")
+# Entrada: H2 e HS sao celulas tangenciais da placa lobular -- fluxo optico
+# horizontal, a via de virada. H2 projeta CONTRALATERAL (scripts/trace.py mede
+# assimetria +0.60), entao estimulo a esquerda vira para a direita: desvio.
+# LPLC2/LC4 sao looming -> fibra gigante -> fuga, NAO steering: influencia nos
+# descendentes 60x menor que H2 e do lado errado. Ficam como canal de parada.
+PORT_TYPES = ("DNa02", "DNa01", "DNp09", "MDN",
+              "H2", "HSE", "HSN", "HSS",
+              "LPLC2", "LC4", "LC11", "LC6", "LC16")
 
 
 def build(data_dir: str | Path = "data", out: str | Path = "data/brain.npz") -> dict:

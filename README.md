@@ -38,7 +38,8 @@ o robô se conecta — não se injeta pixel em fotorreceptor:
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 bash scripts/fetch_data.sh     # ~55 MB do espelho público do Codex
 .venv/bin/python scripts/build.py       # CSVs -> data/brain.npz (~6 s)
-.venv/bin/python scripts/calibrate.py   # faixa dinâmica e teste de latch
+.venv/bin/python scripts/trace.py       # qual porta tem influência lateralizada
+.venv/bin/python scripts/calibrate.py   # faixa dinâmica e lateralização
 .venv/bin/python scripts/demo.py        # um dia da mosca em 20 min -> demo.png
 ```
 
@@ -46,34 +47,58 @@ bash scripts/fetch_data.sh     # ~55 MB do espelho público do Codex
 
 **Funciona:**
 
-- Pipeline completo: CSV → matriz esparsa assinada → LIF → rodas.
-- Runtime LIF orientado a eventos, ~0,18× tempo real no M1 Max (400 passos de
-  controle com 10 ms biológicos cada em 22 s). Suficiente para um loop de
-  decisão a ~7 Hz; reflexos ficam locais, nunca aqui.
-- Rede numa faixa fisiologicamente plausível (~5–11 Hz médios), sem morrer nem
-  saturar, graças à adaptação de frequência (`B_ADAPT`).
-- O ciclo circadiano + pressão de sono produzem o padrão certo: ativo ao
+- Pipeline completo: CSV -> matriz esparsa assinada -> LIF -> rodas.
+- Runtime LIF orientado a eventos, **0,36x tempo real** no M1 Max. Suficiente
+  para um loop de decisao a ~10 Hz; reflexos ficam locais, nunca aqui.
+- **Steering vem do conectoma.** Estimulo em `H2` de um lado produz assimetria
+  **+0,228 / -0,218** na populacao descendente -- espelhada e contralateral, ou
+  seja, obstaculo a esquerda faz virar para a direita.
+- Ciclo circadiano + pressao de sono produzem o padrao certo: ativo ao
   amanhecer e ao entardecer, quase parado de madrugada.
 
-**Não funciona ainda — é o próximo trabalho real:**
+**A descoberta que destravou o passo 4.** `scripts/trace.py` mede, por
+propagacao linear no grafo, a influencia de cada porta sensorial sobre os
+descendentes esquerdos e direitos. Resultado:
 
-- **A resposta lateralizada a looming é fraca.** Injetando nas LPLC2 de um lado,
-  a assimetria normalizada da população descendente muda só ~0,08, e existe um
-  viés de repouso (`TURN_BIAS`) da mesma ordem que precisa ser subtraído. O
-  sinal diferencial tem a direção certa mas não é forte o bastante para dirigir.
-- **`DNp09` fica mudo** mesmo com injeção direta acima do limiar — provavelmente
-  inibição da rede. Por isso o avanço é lido da população descendente inteira, e
-  não dele.
-- Não há porta olfativa de verdade: o "cheiro" da base entra pelas LC11. Falta
+| fonte (esq) | ->DN_L | ->DN_R | assimetria |
+|---|---|---|---|
+| **H2** | 0,105 | **0,425** | **+0,603** contralateral |
+| HSS | 0,071 | 0,042 | -0,260 |
+| LPLC2 | 0,0068 | 0,0014 | -0,658 |
+| LC4 | 0,0196 | 0,0028 | -0,753 |
+
+`LPLC2` era a porta errada: influencia 60x menor que `H2` e do lado errado. E'
+a via de looming -> fibra gigante -> **fuga**, nao de steering. `H2` e' a celula
+tangencial da placa lobular que projeta contralateralmente. Rodar esse tracado
+custa 1,3 s e responde o que o spiking levaria minutos para responder: se nao ha
+caminho lateralizado no grafo, nenhuma calibracao de `W_SYN` vai criar um.
+
+**O bug de escala.** `W_SYN = 1.0` dava taxa media "plausivel" (~11 Hz) mas com
+`i_syn` em **-1800 mV** contra limiar de 7 mV: regime saturado onde excitacao e
+inibicao gigantes se cancelam e a injecao sensorial e' irrelevante. Calibrar
+pela taxa media engana. O alvo certo e' a **lateralizacao**. Em `W_SYN = 0.18`
+a resposta e' limpa e espelhada.
+
+**Nao funciona ainda:**
+
+- **O avanco nao vem do conectoma.** No ponto de operacao calibrado a populacao
+  descendente fica em 0-1 Hz, insuficiente para dirigir velocidade, e `DNp09`
+  nao dispara nem com injecao direta acima do limiar (inibicao da rede). Hoje o
+  avanco e' `V_CRUISE * drive_forward()`, ou seja, estado interno. O steering,
+  esse sim, e' do conectoma.
+- Trade-off nao resolvido: `W_SYN` alto da' rede ativa mas sem lateralizacao;
+  baixo da' lateralizacao limpa mas rede quase muda. Provavel causa: falta o
+  drive sensorial distribuido que a mosca real tem (~17k sensoriais + 78k
+  opticos ativos o tempo todo), entao a rede so' tem 1-3 neuronios injetados.
+- Sem porta olfativa de verdade: o "cheiro" da base entra pelas LC11. Falta
   resolver os ORNs do lobo antenal.
-- Sem complexo central (heading / ring attractor) nem corpo cogumelar
-  (familiaridade de lugar). `novelty` hoje é um seno sintético no demo.
-- Sem Webots ainda. O `Body` já fala em `(v_esq, v_dir)` para plugar direto.
+- Sem complexo central (heading) nem corpo cogumelar (familiaridade). `novelty`
+  ainda e' um seno sintetico no demo.
+- Sem Webots. O `Body` ja' devolve `(v_esq, v_dir)` para plugar direto.
 
-**Parâmetros de calibração** (nada disso vem dos CSVs — o conectoma dá anatomia,
-não fisiologia): `W_SYN`, `V_TH`, `TAU_M`, `TAU_SYN`, `B_ADAPT` em `brain.py`;
-`K_LINEAR`, `K_ANGULAR`, `TURN_BIAS` em `body.py`. `W_SYN` é de longe o mais
-sensível.
+**Parametros de calibracao** (nada disso vem dos CSVs -- o conectoma da
+anatomia, nao fisiologia): `W_SYN`, `V_TH`, `TAU_M`, `TAU_SYN`, `B_ADAPT` em
+`brain.py`; `V_CRUISE`, `K_ANGULAR` em `body.py`.
 
 ## Tempo comprimido
 

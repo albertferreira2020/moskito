@@ -20,8 +20,12 @@ TAU_ADAPT = 120.0 # ms, decaimento da adaptacao de frequencia
 B_ADAPT = 1.6     # mV acumulados por spike -- impede a rede de latchar
 V_TH = 7.0        # mV acima do repouso
 T_REF = 2.2       # ms, periodo refratario
-W_SYN = 1.0       # mV por sinapse -- o parametro mais sensivel do modelo.
-                  # Calibrado para taxa media da rede ~11 Hz (scripts/calibrate.py).
+W_SYN = 0.18      # mV por sinapse -- o parametro mais sensivel do modelo.
+                  # Calibrado pela LATERALIZACAO, nao pela taxa media: com 1.0 a
+                  # rede da' ~11 Hz "plausiveis" mas com i_syn em -1800 mV, um
+                  # regime saturado onde a injecao sensorial e' irrelevante.
+                  # Em 0.18 o estimulo em H2 produz assimetria +0.23/-0.22
+                  # espelhada nos descendentes. Ver scripts/calibrate.py.
 
 
 class Brain:

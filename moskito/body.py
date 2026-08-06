@@ -15,13 +15,13 @@ from .brain import Brain
 from .drives import Drives
 
 # Ganhos do adaptador. Calibracao, nao anatomia.
-K_LINEAR = 8.0
-K_ANGULAR = 1.2
+V_CRUISE = 0.18
+K_ANGULAR = 0.8
 K_REVERSE = 2.0
 V_MAX = 0.25
-# Vies em repouso da assimetria descendente. Medido com scripts/calibrate.py e
-# subtraido, senao o robo anda torto de fabrica.
-TURN_BIAS = 0.083
+# Vies em repouso da assimetria descendente. Em w_syn=0.18 a resposta ja' e'
+# espelhada (+0.228 / -0.218), entao nao ha' vies a subtrair.
+TURN_BIAS = 0.0
 
 
 class Body:
@@ -30,16 +30,23 @@ class Body:
         self.drives = drives or Drives()
         self.inject = np.zeros(brain.n, dtype=np.float32)
 
-    def sense(self, *, looming_left: float = 0.0, looming_right: float = 0.0,
-              object_left: float = 0.0, object_right: float = 0.0, odor: float = 0.0):
+    def sense(self, *, flow_left: float = 0.0, flow_right: float = 0.0,
+              looming_left: float = 0.0, looming_right: float = 0.0, odor: float = 0.0):
         """Injeta nas portas. Valores em mV (limiar do neuronio = 7 mV)."""
         self.inject[:] = 0.0
-        # Reflexo de looming: NAO passa pelos estados internos. Mosca sonolenta
-        # tambem foge de tapa.
+        # STEERING: H2 e' a celula tangencial da placa lobular que projeta
+        # CONTRALATERAL. Fluxo optico a esquerda -> descendentes direitos ->
+        # vira para a direita, ou seja, desvia. Medido em scripts/trace.py:
+        # assimetria +0.60 no grafo, +0.23 no spiking.
+        self._put("H2_L", flow_left * 40.0)
+        self._put("H2_R", flow_right * 40.0)
+
+        # LOOMING: via da fibra gigante = fuga, nao steering (trace.py mostra
+        # influencia 60x menor que H2 e ipsilateral). Fica como canal de parada.
+        # Reflexo: NAO passa pelos estados internos -- mosca sonolenta tambem
+        # foge de tapa.
         self._put("LPLC2_L", looming_left * 12.0)
         self._put("LPLC2_R", looming_right * 12.0)
-        self._put("LC11_L", object_left * 8.0)
-        self._put("LC11_R", object_right * 8.0)
 
         # Porta olfativa: o beacon da base entra como "cheiro de comida" e a fome
         # e' que abre o canal. Falta resolver os ORNs -- por ora entra pela LC11.
@@ -67,7 +74,11 @@ class Body:
         steer_gate = max(self.drives.awake, self.drives.arousal)
         turn = K_ANGULAR * steer_gate * ((dr - dl) / max(dr + dl, 1e-9) - TURN_BIAS)
 
-        forward = K_LINEAR * (dl + dr) / 2 * self.drives.drive_forward()
+        # AVANCO vem do estado interno, nao do conectoma: no ponto de operacao
+        # calibrado a populacao descendente fica em 0-1 Hz, insuficiente para
+        # dirigir velocidade. DNp09 tambem nao dispara (inibicao da rede).
+        # O steering acima E' do conectoma; isto aqui e' o vies central.
+        forward = V_CRUISE * self.drives.drive_forward()
         reverse = K_REVERSE * r("MDN")
 
         v = float(np.clip(forward - reverse, -V_MAX, V_MAX))
