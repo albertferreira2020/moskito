@@ -25,9 +25,11 @@ from moskito.drives import DAY_MINUTES, Drives
 from moskito.mushroom import MushroomBody, frame_features
 
 BRAIN_MS = 5.0         # tempo biologico por passo: metade do custo, loop 2x mais rapido
-PS_NEAR = 250.0        # leitura de proximidade que ja' conta como parede
-PS_LOOM = 1800.0       # leitura frontal que dispara o reflexo de fuga
-PS_STUCK = 2600.0      # encostado na parede
+# Limiares tirados do lookupTable do E-puckDistanceSensor.proto, nao chutados:
+#   0mm=4095  5mm=2133  1cm=1466  1.5cm=601  2cm=384  3cm=235  4cm=158  5cm=120
+PS_NEAR = 150.0        # ~4 cm: comeca a desviar cedo, antes de encunhar
+PS_LOOM = 600.0        # ~1.5 cm: reflexo de fuga
+PS_STUCK = 1200.0      # ~1.1 cm: contato
 WHEEL_R = 0.0205       # m
 AXLE = 0.052           # m, distancia entre rodas do e-puck
 CAM_FOV = 0.84         # rad, campo de visao horizontal
@@ -143,7 +145,8 @@ def main() -> None:
             r = body.rates()
             seen = f" ALGUEM({tgt_size:.2f})" if tgt_size > 0.01 else ""
             print(f"{body.drives}  DN={r['DN_L']:5.2f}/{r['DN_R']:5.2f}  "
-                  f"prox E/D={flow_l:.2f}/{flow_r:.2f}{'  PRESO' if stuck else ''}"
+                  f"prox E/D={flow_l:.2f}/{flow_r:.2f} psmax={v.max():.0f}"
+                  f"{'  PRESO' if stuck else ''}"
                   f"  v={vl:+.3f}/{vr:+.3f}  mapa={mb.learned:.1%}  {cx}{seen}"
                   if mb else f"{body.drives}  v={vl:+.3f}/{vr:+.3f}", flush=True)
 
