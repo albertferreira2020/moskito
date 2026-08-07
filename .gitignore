@@ -5,3 +5,4 @@ data/*.csv
 data/*.csv.gz
 data/*.npz
 demo.png
+.claude
