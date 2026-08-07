@@ -27,7 +27,7 @@ from .drives import Drives
 # de fazer curva, porque uma roda vai ao maximo e a outra ao minimo.
 # V_CRUISE deixa folga para a curva caber dentro do teto.
 CRUISE_FRAC = 0.75     # fracao do teto usada em cruzeiro; o resto e' folga p/ curva
-K_ANGULAR = 0.25
+K_ANGULAR = 0.12
 K_REVERSE = 2.0
 V_MAX = 0.154          # so' um padrao: quem manda e' motor.getMaxVelocity()
 # Vies em repouso da assimetria descendente. Em w_syn=0.18 a resposta ja' e'
@@ -47,7 +47,8 @@ class Body:
 
     def sense(self, *, flow_left: float = 0.0, flow_right: float = 0.0,
               looming_left: float = 0.0, looming_right: float = 0.0, odor: float = 0.0,
-              target_left: float = 0.0, target_right: float = 0.0):
+              target_left: float = 0.0, target_right: float = 0.0,
+              goal_left: float = 0.0, goal_right: float = 0.0):
         """Injeta nas portas. Valores em mV (limiar do neuronio = 7 mV)."""
         self.inject[:] = 0.0
         d = self.drives
@@ -72,7 +73,18 @@ class Body:
         self._put("H2_R", target_left * 45.0 * gate)
         self._put("H2_L", target_right * 45.0 * gate)
 
-        # STEERING: H2 e' a celula tangencial da placa lobular que projeta
+        # RUMO. PFL3 e' a saida de steering do complexo central: compara o bump
+        # dos EPG (direcao atual) com o objetivo e desequilibra os descendentes
+        # para anular o erro. E' 3.7x mais forte que H2 com metade da injecao
+        # (assimetria +0.85/-0.83 contra +0.23), e e' o que da' RUMO -- sem ele
+        # o steering e' reflexo puro e o bicho oscila na frente da parede.
+        # Os dois lados sempre acima do limiar (7 mV); o comando esta' na
+        # diferenca. Alinhado = 18/18 e nao vira; erro maximo = 26/10.
+        if goal_left or goal_right:
+            self._put("PFL3_L", (10.0 + 16.0 * goal_left) * d.awake)
+            self._put("PFL3_R", (10.0 + 16.0 * goal_right) * d.awake)
+
+        # DESVIO: H2 e' a celula tangencial da placa lobular que projeta
         # CONTRALATERAL. Fluxo optico a esquerda -> descendentes direitos ->
         # vira para a direita, ou seja, desvia. Medido em scripts/trace.py:
         # assimetria +0.60 no grafo, +0.23 no spiking.

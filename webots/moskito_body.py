@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from moskito.body import Body
 from moskito.brain import Brain
+from moskito.compass import Compass
 from moskito.connectome import load
 from moskito.drives import DAY_MINUTES, Drives
 from moskito.mushroom import MushroomBody, frame_features
@@ -28,11 +29,13 @@ PS_NEAR = 250.0        # leitura de proximidade que ja' conta como parede
 PS_LOOM = 1800.0       # leitura frontal que dispara o reflexo de fuga
 PS_STUCK = 2600.0      # encostado na parede
 WHEEL_R = 0.0205       # m
+AXLE = 0.052           # m, distancia entre rodas do e-puck
+CAM_FOV = 0.84         # rad, campo de visao horizontal
 MET_DIST = 0.30        # fracao da imagem ocupada que conta como "encontrou"
 
 
-def find_target(image: bytes, w: int, h: int) -> tuple[float, float, float]:
-    """Acha a camisa vermelha do pedestre. Devolve (esquerda, direita, tamanho).
+def find_target(image: bytes, w: int, h: int) -> tuple[float, float, float, float | None]:
+    """Acha a camisa vermelha do pedestre. Devolve (esq, dir, tamanho, rumo).
 
     E' um detector de cor, nao visao de verdade. No robo fisico isso vira um
     classificador na camera do ESP32 -- o cerebro nao muda, so' esta porta.
@@ -42,11 +45,12 @@ def find_target(image: bytes, w: int, h: int) -> tuple[float, float, float]:
     mask = (r > 90) & (r - g > 45) & (r - b > 45)
     n = int(mask.sum())
     if n < 8:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, None
     cx = float(np.argwhere(mask)[:, 1].mean()) / w      # 0 = esquerda, 1 = direita
     size = n / (w * h)
     strength = min(1.0, size * 12)
-    return (1.0 - cx) * strength, cx * strength, size
+    bearing = (0.5 - cx) * CAM_FOV          # positivo = a esquerda
+    return (1.0 - cx) * strength, cx * strength, size, bearing
 
 
 def main() -> None:
@@ -83,11 +87,12 @@ def main() -> None:
     w, _, ports = load(Path(__file__).resolve().parents[1] / "data/brain.npz")
     body = Body(Brain(w, seed=11), ports, Drives(), seed=11, v_max=v_max)
     mb = MushroomBody(n_in=16 * 12, seed=11) if cam is not None else None
+    cx = Compass(seed=11)
     print(f"pronto: {w.shape[0]:,} neuronios, dia da mosca = {DAY_MINUTES:.0f} min", flush=True)
     print(f"motor: {max_omega / 0.995:.3f} rad/s -> {v_max:.3f} m/s "
           f"({'v2' if max_omega > 7 else 'v1 -- recarregue o mundo para pegar version 2'})", flush=True)
 
-    step, stuck_for = 0, 0
+    step, stuck_for, vl, vr = 0, 0, 0.0, 0.0
     while robot.step(dt) != -1:
         v = np.array([s.getValue() for s in ps], dtype=np.float32)
 
@@ -102,14 +107,23 @@ def main() -> None:
         stuck_for = stuck_for + 1 if max(v[0], v[7]) > PS_STUCK else 0
         stuck = stuck_for > 8
 
-        novelty, tgt_l, tgt_r, tgt_size = body.drives.novelty, 0.0, 0.0, 0.0
+        novelty, tgt_l, tgt_r, tgt_size, bearing = body.drives.novelty, 0.0, 0.0, 0.0, None
         if cam is not None and (img := cam.getImage()):
             novelty = mb(frame_features(img, cw, ch))
-            tgt_l, tgt_r, tgt_size = find_target(img, cw, ch)
+            tgt_l, tgt_r, tgt_size, bearing = find_target(img, cw, ch)
+
+        # Bussola: gira o bump com a rotacao propria, depois decide se o rumo
+        # ainda vale. Objetivo so' muda quando ha' motivo -- e' o que impede o
+        # bicho de ficar oscilando na frente da parede.
+        cx.update((vr - vl) / AXLE, dt / 1000.0)
+        cx.decide(novelty=novelty, frustration=body.drives.frustration,
+                  target_bearing=bearing if body.drives.social > 0.2 else None)
+        goal_l, goal_r = cx.steer()
 
         body.sense(flow_left=flow_l, flow_right=flow_r,
                    looming_left=loom_l, looming_right=loom_r,
-                   odor=body.drives.hunger, target_left=tgt_l, target_right=tgt_r)
+                   odor=body.drives.hunger, target_left=tgt_l, target_right=tgt_r,
+                   goal_left=goal_l, goal_right=goal_r)
         vl, vr = body.act(BRAIN_MS)
 
         speed = abs(vl + vr) / 2
@@ -128,7 +142,7 @@ def main() -> None:
             seen = f" ALGUEM({tgt_size:.2f})" if tgt_size > 0.01 else ""
             print(f"{body.drives}  DN={r['DN_L']:5.2f}/{r['DN_R']:5.2f}  "
                   f"prox E/D={flow_l:.2f}/{flow_r:.2f}{'  PRESO' if stuck else ''}"
-                  f"  v={vl:+.3f}/{vr:+.3f}  mapa={mb.learned:.1%}{seen}"
+                  f"  v={vl:+.3f}/{vr:+.3f}  mapa={mb.learned:.1%}  {cx}{seen}"
                   if mb else f"{body.drives}  v={vl:+.3f}/{vr:+.3f}", flush=True)
 
 

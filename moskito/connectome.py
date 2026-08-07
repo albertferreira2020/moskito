@@ -27,8 +27,12 @@ NT_SIGN = {"ACH": 1.0, "GABA": -1.0, "GLUT": -1.0, "DA": 0.0, "SER": 0.0, "OCT":
 # assimetria +0.60), entao estimulo a esquerda vira para a direita: desvio.
 # LPLC2/LC4 sao looming -> fibra gigante -> fuga, NAO steering: influencia nos
 # descendentes 60x menor que H2 e do lado errado. Ficam como canal de parada.
+# PFL3 e' a saida de steering do complexo central: compara a direcao atual
+# (bump dos EPG) com a direcao-objetivo e desequilibra os descendentes para
+# anular o erro. E' o que faz a mosca ter RUMO em vez de so' reagir.
 PORT_TYPES = ("DNa02", "DNa01", "DNp09", "MDN",
               "H2", "HSE", "HSN", "HSS",
+              "PFL3", "PFL2", "EPG",
               "LPLC2", "LC4", "LC11", "LC6", "LC16")
 
 
