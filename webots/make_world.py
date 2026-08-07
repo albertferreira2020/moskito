@@ -63,4 +63,15 @@ if __name__ == "__main__":
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(s)
+
+    # O .wbproj guarda o estado da INTERFACE por mundo (tamanho dos overlays,
+    # docks, e `centralWidgetVisible`). Ja' aconteceu de a viewport 3D ficar
+    # com centralWidgetVisible: 0 e o Webots abrir com a tela em branco -- sem
+    # erro nenhum, porque o mundo carrega perfeitamente, so' nao ha' o que
+    # mostrar. Regenerar o mundo tambem zera a interface.
+    proj = OUT.parent / f".{OUT.stem}.wbproj"
+    if proj.exists():
+        proj.unlink()
+        print(f"   removido {proj.name} (estado da interface volta ao padrao)")
+
     print(f"-> {OUT}  ({len(s.splitlines())} linhas, 0 campos hidden)")
