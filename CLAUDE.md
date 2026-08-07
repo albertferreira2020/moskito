@@ -122,14 +122,37 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
 4. **Limiares de sensor saem do `lookupTable` do PROTO, não de chute.**
    E-puck: `0mm=4095 5mm=2133 1cm=1466 2cm=384 4cm=158`.
 
-5. **O Webots grava estado dentro do `.wbt`** ao salvar (campos `hidden`,
+   A terceira coluna do `lookupTable` é **ruído relativo**, e ela invalida o IR
+   como medidor de progresso: a 1,5 cm (601 contagens, ruído 0,0406) o desvio
+   de uma amostra já é ~24 contagens, e a diferença entre dois passos tem
+   desvio ~34. O antigo teste "não mudou" usava limiar 12 sobre o `.max()` dos
+   8 sensores — lia ruído puro, o contador de preso zerava toda hora e a
+   frustração nunca subia. **Progresso se mede pela câmera**, não pelo IR; do
+   IR só sobra o contato (4095 com ruído 0,002 contra limiar 1200), que é
+   imune.
+
+5. **Detecção de "não estou saindo do lugar" é cópia eferente × fluxo óptico.**
+   Mandei roda e a cena não mudou ⇒ preso, não importa o que o IR diz (debaixo
+   da poltrona ele lê 2–5 cm e nunca acusa contato). Comparar com o quadro
+   **anterior** não serve: a 11 cm/s são 1,8 mm por passo, deslocamento
+   sub-pixel num muro liso, indistinguível de encunhado. A referência visual só
+   avança quando a cena mudou de verdade, e `cam_flow` acumula desde a última
+   mudança confirmada. Medido: encunhado dispara em 41 passos (~0,66 s) tanto
+   em parede texturizada quanto lisa; deslize de 0,05 contagem/passo não
+   dispara.
+
+6. **Cena congelada escala direto para ré, sem gastar meia-volta.** Encunhado
+   em vão estreito, girar só raspa — `Compass.back_out()` em vez da escalada
+   `turn_back` → `turn_back` → ré, que desperdiça 6 s de manobra inútil.
+
+7. **O Webots grava estado dentro do `.wbt`** ao salvar (campos `hidden`,
    posição final). O robô passa a nascer onde travou. Use `make_world.py`.
 
-6. **O `.wbproj` guarda o estado da INTERFACE** e pode conter
+8. **O `.wbproj` guarda o estado da INTERFACE** e pode conter
    `centralWidgetVisible: 0` ou `renderingMode: WIREFRAME` — a janela abre em
    branco **sem nenhuma mensagem de erro**. Só resolve com o Webots fechado.
 
-7. **Sintoma no simulador ≠ bug no código.** Antes de mexer na lógica, confirme
+9. **Sintoma no simulador ≠ bug no código.** Antes de mexer na lógica, confirme
    que o mundo carrega (`webots --batch --stdout --mode=pause <world>`) e que o
    robô não está preso pela geometria. Já perdemos quatro rodadas por isso.
 

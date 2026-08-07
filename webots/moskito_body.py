@@ -30,7 +30,14 @@ BRAIN_MS = 5.0         # tempo biologico por passo: metade do custo, loop 2x mai
 PS_NEAR = 150.0        # ~4 cm: comeca a desviar cedo, antes de encunhar
 PS_LOOM = 600.0        # ~1.5 cm: reflexo de fuga
 PS_STUCK = 1200.0      # ~1.1 cm: contato
-PS_MOVED = 12.0        # variacao minima entre passos para contar como progresso
+# O IR NAO serve para medir progresso: no lookupTable o ruido e' uma FRACAO da
+# leitura, e a 1,5 cm (601 contagens, ruido 0,0406) o desvio de uma amostra ja'
+# e' ~24 contagens -- a diferenca entre dois passos tem desvio ~34. Qualquer
+# limiar pequeno so' le' ruido; qualquer limiar grande perde o sinal. Quem diz
+# se o robo esta' andando e' a CAMERA, abaixo.
+CAM_STILL = 1.5        # contagens de luminancia acumuladas = deslocou de fato
+CAM_STALL = 40         # passos (~0,6 s) sem deslocar, com motor mandado
+V_COMMANDED = 0.25     # fracao de v_max que conta como "mandei andar"
 WHEEL_R = 0.0205       # m
 AXLE = 0.052           # m, distancia entre rodas do e-puck
 CAM_FOV = 0.84         # rad, campo de visao horizontal
@@ -95,7 +102,7 @@ def main() -> None:
     print(f"motor: {max_omega / 0.995:.3f} rad/s -> {v_max:.3f} m/s "
           f"({'v2' if max_omega > 7 else 'v1 -- recarregue o mundo para pegar version 2'})", flush=True)
 
-    step, stuck_for, vl, vr, ps_ant = 0, 0, 0.0, 0.0, None
+    step, frozen_for, vl, vr, feat_ref = 0, 0, 0.0, 0.0, None
     while robot.step(dt) != -1:
         v = np.array([s.getValue() for s in ps], dtype=np.float32)
 
@@ -106,27 +113,48 @@ def main() -> None:
         loom_r = 1.0 if v[0] > PS_LOOM else 0.0
         loom_l = 1.0 if v[7] > PS_LOOM else 0.0
 
-        # Preso = perto de algo E sem progresso. Encostar nao basta: debaixo da
-        # poltrona os sensores leem 2-5 cm, longe do limiar de contato, e o robo
-        # nunca percebia que nao estava saindo do lugar. Se ele avanca, o que ele
-        # ve' muda; se as leituras congelam, ele nao esta' indo a lugar nenhum.
-        perto = v.max() > PS_NEAR
-        parado = ps_ant is not None and float(np.abs(v - ps_ant).max()) < PS_MOVED
-        ps_ant = v
-        stuck_for = stuck_for + 1 if (perto and parado) or v.max() > PS_STUCK else 0
-        stuck = stuck_for > 12
-
         novelty, tgt_l, tgt_r, tgt_size, bearing = body.drives.novelty, 0.0, 0.0, 0.0, None
+        feat, cam_flow = None, 255.0
         if cam is not None and (img := cam.getImage()):
-            novelty = mb(frame_features(img, cw, ch))
+            feat = frame_features(img, cw, ch)
+            if feat_ref is not None:
+                cam_flow = float(np.abs(feat - feat_ref).mean())
+            novelty = mb(feat)
             tgt_l, tgt_r, tgt_size, bearing = find_target(img, cw, ch)
+
+        # PRESO = mandei andar e o mundo nao se mexeu. E' a comparacao entre
+        # copia eferente e fluxo optico -- e' assim que a mosca sabe se esta'
+        # progredindo, ela tambem nao tem encoder de roda. Vale mais que o IR:
+        # debaixo da poltrona o IR le' 2-5 cm e nunca acusa contato, mas a
+        # imagem congela igual. `vl`/`vr` sao do passo ANTERIOR de proposito: a
+        # cena deste passo e' consequencia do comando daquele.
+        #
+        # A referencia so' avanca quando a cena MUDOU de verdade, e cam_flow
+        # mede o quanto ela andou desde a ultima mudanca confirmada. Comparar
+        # com o quadro anterior nao serve: a 11 cm/s sao 1,8 mm por passo, e
+        # num muro liso a 1 m isso e' deslocamento sub-pixel -- um deslize lento
+        # ficaria indistinguivel de estar encunhado. Acumulando, o deslize
+        # sempre passa do limiar; encunhado fica em zero para sempre.
+        #
+        # Sem camera sobra so' o contato, que e' o unico teste de IR imune ao
+        # ruido (4095 contagens com ruido 0,002 contra limiar de 1200).
+        mandou = max(abs(vl), abs(vr)) > V_COMMANDED * v_max
+        if not mandou or cam_flow > CAM_STILL:
+            frozen_for = 0
+            if feat is not None:
+                feat_ref = feat
+        else:
+            frozen_for += 1
+        frozen = frozen_for > CAM_STALL
+        stuck = frozen or v.max() > PS_STUCK
 
         # Bussola: gira o bump com a rotacao propria, depois decide se o rumo
         # ainda vale. Objetivo so' muda quando ha' motivo -- e' o que impede o
         # bicho de ficar oscilando na frente da parede.
         cx.update((vr - vl) / AXLE, dt / 1000.0)
         cx.decide(novelty=novelty, frustration=body.drives.frustration,
-                  target_bearing=bearing if body.drives.social > 0.2 else None)
+                  target_bearing=bearing if body.drives.social > 0.2 else None,
+                  frozen=frozen)
         # positivo = obstaculo a direita = vira para a esquerda
         goal_l, goal_r = cx.steer(avoid=flow_r - flow_l)
         recuando = cx.reversing > 0.0
@@ -152,8 +180,9 @@ def main() -> None:
             r = body.rates()
             seen = f" ALGUEM({tgt_size:.2f})" if tgt_size > 0.01 else ""
             print(f"{body.drives}  DN={r['DN_L']:5.2f}/{r['DN_R']:5.2f}  "
-                  f"prox E/D={flow_l:.2f}/{flow_r:.2f} psmax={v.max():.0f}"
-                  f"{'  RE-RETA' if recuando else '  PRESO' if stuck else ''}"
+                  f"prox E/D={flow_l:.2f}/{flow_r:.2f} psmax={v.max():.0f} "
+                  f"cam={cam_flow:5.2f}"
+                  f"{'  RE-RETA' if recuando else '  CENA-PARADA' if frozen else '  PRESO' if stuck else ''}"
                   f"  v={vl:+.3f}/{vr:+.3f}  mapa={mb.learned:.1%}  {cx}{seen}"
                   if mb else f"{body.drives}  v={vl:+.3f}/{vr:+.3f}", flush=True)
 

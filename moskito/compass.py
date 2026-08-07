@@ -110,8 +110,20 @@ class Compass:
         self.held = 0.0
         self.escaping = ESCAPE_MIN
 
+    def back_out(self) -> None:
+        """Re' imediata, sem gastar as meias-voltas da escalada.
+
+        E' para quando o campo visual CONGELA: se as rodas giram e nada muda,
+        o robo nao esta' num beco largo onde virar resolve -- esta' encunhado,
+        e girar ali so' raspa. A unica saida e' voltar pelo eixo por onde
+        entrou. Nao ha' informacao a ganhar tentando virar antes.
+        """
+        self.reversing = REVERSE_S
+        self.escaping = REVERSE_S
+        self.tries = 0
+
     def decide(self, *, novelty: float, frustration: float,
-               target_bearing: float | None = None) -> None:
+               target_bearing: float | None = None, frozen: bool = False) -> None:
         """Muda de rumo so' quando ha' motivo. O resto do tempo, segura."""
         if frustration < 0.2:
             self.tries = 0                      # saiu: zera a escalada
@@ -119,6 +131,11 @@ class Compass:
             # Manobra de fuga em curso: NAO redecide. Redisparar a meia-volta a
             # cada segundo invertia o objetivo sem parar, o rumo nunca assentava
             # e o bicho remoia no lugar em vez de sair.
+            return
+        if frozen:
+            # Cena parada com motor mandado: nao adianta escolher outro rumo,
+            # nenhum rumo esta' sendo executado. Re' primeiro, rumo depois.
+            self.back_out()
             return
         if frustration > 0.5:
             # Empacado nao espera o compromisso minimo de rumo: 8 s empurrando
