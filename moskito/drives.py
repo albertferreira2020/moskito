@@ -91,7 +91,9 @@ class Drives:
         lugar ja' conhecido.
         """
         curiosity = 0.6 + 0.4 * max(self.novelty, 0.6 * self.social)
-        return self.awake * curiosity * (1.0 - 0.8 * self.frustration)
+        # Corta o avanco, mas nao a ponto de nao conseguir SAIR: escapar de um
+        # canto exige movimento, e 80% de corte deixava o bicho sem forca.
+        return self.awake * curiosity * (1.0 - 0.45 * self.frustration)
 
     def drive_odor(self) -> float:
         """Abre a via do 'cheiro' (beacon da base). Mosca saciada ignora comida."""

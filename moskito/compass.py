@@ -27,6 +27,7 @@ WIDTH = 1.4            # concentracao do bump (von Mises); menor = bump mais lar
 DRIFT = 0.004          # rad/s de deriva: integrador nenhum e' perfeito
 HOLD_MIN = 8.0         # s de simulacao segurando o mesmo rumo, no minimo
 BORED = 0.35           # abaixo disso o corpo cogumelar diz "ja' conheco"
+ESCAPE_MIN = 3.0       # s: fuga e' manobra comprometida, nao gatilho continuo
 
 
 def wrap(a: float) -> float:
@@ -41,6 +42,7 @@ class Compass:
         self.phase = 0.0                     # posicao do bump = direcao da cabeca
         self.goal = float(self.rng.uniform(-np.pi, np.pi))
         self.held = 0.0
+        self.escaping = 0.0
 
     # --- bussola ---
 
@@ -57,6 +59,7 @@ class Compass:
         self.phase = wrap(self.phase + omega * dt
                           + self.rng.normal(0.0, DRIFT * np.sqrt(dt)))
         self.held += dt
+        self.escaping = max(0.0, self.escaping - dt)
 
     @property
     def ring(self) -> np.ndarray:
@@ -88,15 +91,20 @@ class Compass:
         """
         self.goal = wrap(self.heading + np.pi + self.rng.uniform(-0.7, 0.7))
         self.held = 0.0
+        self.escaping = ESCAPE_MIN
 
     def decide(self, *, novelty: float, frustration: float,
                target_bearing: float | None = None) -> None:
         """Muda de rumo so' quando ha' motivo. O resto do tempo, segura."""
+        if self.escaping > 0.0:
+            # Manobra de fuga em curso: NAO redecide. Redisparar a meia-volta a
+            # cada segundo invertia o objetivo sem parar, o rumo nunca assentava
+            # e o bicho remoia no lugar em vez de sair.
+            return
         if frustration > 0.5:
-            # Empacado NAO espera o compromisso minimo: 8 s empurrando canto e'
-            # exatamente o que trava o bicho. E so' vira uma vez por episodio.
-            if self.held > 1.0:
-                self.turn_back()
+            # Empacado nao espera o compromisso minimo de rumo: 8 s empurrando
+            # canto e' exatamente o que trava.
+            self.turn_back()
             return
         if target_bearing is not None:          # viu alguem: persegue, sempre
             self.goal = wrap(self.heading + target_bearing)
