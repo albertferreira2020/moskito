@@ -30,6 +30,7 @@ BORED = 0.35           # abaixo disso o corpo cogumelar diz "ja' conheco"
 ESCAPE_MIN = 3.0       # s: fuga e' manobra comprometida, nao gatilho continuo
 TRIES = 2              # meias-voltas antes de escalar para re' em linha reta
 REVERSE_S = 4.0        # s de re' reta: so' isso tira de fenda estreita
+AVOID = 1.3            # peso do obstaculo no comando de curva
 
 
 def wrap(a: float) -> float:
@@ -138,7 +139,7 @@ class Compass:
         """Quanto falta girar para alinhar com o objetivo, em [-pi, pi]."""
         return wrap(self.goal - self.heading)
 
-    def steer(self, gain: float = 2.2) -> tuple[float, float]:
+    def steer(self, gain: float = 2.2, avoid: float = 0.0) -> tuple[float, float]:
         """Erro -> ativacao dos PFL3 esquerdo e direito. Sempre soma 1.
 
         Os DOIS lados ficam ativos e quem carrega o comando e' a DIFERENCA --
@@ -152,7 +153,12 @@ class Compass:
         """
         if self.reversing > 0.0:
             return 0.5, 0.5                     # re' reta: zero comando de curva
-        e = float(np.clip(self.error / np.pi * gain, -1.0, 1.0))
+
+        # `avoid` entra como erro de rumo, nao por uma via propria: o H2 tem UM
+        # neuronio por lado e satura em +-0.23 de assimetria, contra +-0.85 do
+        # PFL3. Injetar mais no H2 nao aumenta nada. Desviar pelo mesmo canal do
+        # rumo da' ao obstaculo a mesma autoridade de curva que o objetivo.
+        e = float(np.clip(self.error / np.pi * gain + avoid * AVOID, -1.0, 1.0))
         return 0.5 - 0.5 * e, 0.5 + 0.5 * e
 
     def __str__(self) -> str:

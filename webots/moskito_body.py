@@ -30,6 +30,7 @@ BRAIN_MS = 5.0         # tempo biologico por passo: metade do custo, loop 2x mai
 PS_NEAR = 150.0        # ~4 cm: comeca a desviar cedo, antes de encunhar
 PS_LOOM = 600.0        # ~1.5 cm: reflexo de fuga
 PS_STUCK = 1200.0      # ~1.1 cm: contato
+PS_MOVED = 12.0        # variacao minima entre passos para contar como progresso
 WHEEL_R = 0.0205       # m
 AXLE = 0.052           # m, distancia entre rodas do e-puck
 CAM_FOV = 0.84         # rad, campo de visao horizontal
@@ -94,7 +95,7 @@ def main() -> None:
     print(f"motor: {max_omega / 0.995:.3f} rad/s -> {v_max:.3f} m/s "
           f"({'v2' if max_omega > 7 else 'v1 -- recarregue o mundo para pegar version 2'})", flush=True)
 
-    step, stuck_for, vl, vr = 0, 0, 0.0, 0.0
+    step, stuck_for, vl, vr, ps_ant = 0, 0, 0.0, 0.0, None
     while robot.step(dt) != -1:
         v = np.array([s.getValue() for s in ps], dtype=np.float32)
 
@@ -105,11 +106,15 @@ def main() -> None:
         loom_r = 1.0 if v[0] > PS_LOOM else 0.0
         loom_l = 1.0 if v[7] > PS_LOOM else 0.0
 
-        # Preso: encostado em QUALQUER sensor, nao so' na frente. Encunhado
-        # entre parede e poltrona o contato e' lateral, e olhando so' ps0/ps7
-        # o bicho nunca percebia que estava travado.
-        stuck_for = stuck_for + 1 if v.max() > PS_STUCK else 0
-        stuck = stuck_for > 8
+        # Preso = perto de algo E sem progresso. Encostar nao basta: debaixo da
+        # poltrona os sensores leem 2-5 cm, longe do limiar de contato, e o robo
+        # nunca percebia que nao estava saindo do lugar. Se ele avanca, o que ele
+        # ve' muda; se as leituras congelam, ele nao esta' indo a lugar nenhum.
+        perto = v.max() > PS_NEAR
+        parado = ps_ant is not None and float(np.abs(v - ps_ant).max()) < PS_MOVED
+        ps_ant = v
+        stuck_for = stuck_for + 1 if (perto and parado) or v.max() > PS_STUCK else 0
+        stuck = stuck_for > 12
 
         novelty, tgt_l, tgt_r, tgt_size, bearing = body.drives.novelty, 0.0, 0.0, 0.0, None
         if cam is not None and (img := cam.getImage()):
@@ -122,7 +127,8 @@ def main() -> None:
         cx.update((vr - vl) / AXLE, dt / 1000.0)
         cx.decide(novelty=novelty, frustration=body.drives.frustration,
                   target_bearing=bearing if body.drives.social > 0.2 else None)
-        goal_l, goal_r = cx.steer()
+        # positivo = obstaculo a direita = vira para a esquerda
+        goal_l, goal_r = cx.steer(avoid=flow_r - flow_l)
         recuando = cx.reversing > 0.0
 
         body.sense(flow_left=flow_l, flow_right=flow_r,
