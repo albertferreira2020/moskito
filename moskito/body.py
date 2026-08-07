@@ -22,10 +22,14 @@ from .brain import Brain
 from .drives import Drives
 
 # Ganhos do adaptador. Calibracao, nao anatomia.
-V_CRUISE = 0.18
-K_ANGULAR = 0.8
+# V_MAX e' o teto FISICO do e-puck v2: 7.536 rad/s * 0.0205 m de roda. Mandar
+# mais que isso nao acelera nada, so' satura -- e saturado o robo pivota em vez
+# de fazer curva, porque uma roda vai ao maximo e a outra ao minimo.
+# V_CRUISE deixa folga para a curva caber dentro do teto.
+V_CRUISE = 0.115
+K_ANGULAR = 0.25
 K_REVERSE = 2.0
-V_MAX = 0.25
+V_MAX = 0.154
 # Vies em repouso da assimetria descendente. Em w_syn=0.18 a resposta ja' e'
 # espelhada (+0.228 / -0.218), entao nao ha' vies a subtrair.
 TURN_BIAS = 0.0
@@ -105,7 +109,10 @@ class Body:
         # Steering tambem e' comportamento: bicho dormindo nao vira. O alerta
         # segura um piso, senao um sobressalto nao conseguiria desviar.
         steer_gate = max(self.drives.awake, self.drives.arousal, self.drives.frustration)
-        turn = K_ANGULAR * steer_gate * ((dr - dl) / max(dr + dl, 1e-9) - TURN_BIAS)
+        # Cruzeiro faz ARCO (continua avancando enquanto vira); frustrado
+        # pivota, que e' o que tira de beco. Um ganho so' nao serve para os dois.
+        agility = 1.0 + 3.0 * self.drives.frustration
+        turn = K_ANGULAR * agility * steer_gate * ((dr - dl) / max(dr + dl, 1e-9) - TURN_BIAS)
 
         # AVANCO vem do estado interno, nao do conectoma: no ponto de operacao
         # calibrado a populacao descendente fica em 0-1 Hz, insuficiente para

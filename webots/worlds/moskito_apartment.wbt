@@ -2080,6 +2080,7 @@ E-puck {
   translation -6.87 -3.30 0.01
   name "moskito"
   controller "<extern>"
+  version "2"   # motores de 7.536 rad/s em vez de 6.28
   camera_width 64
   camera_height 48
 }

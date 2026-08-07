@@ -23,11 +23,11 @@ from moskito.connectome import load
 from moskito.drives import DAY_MINUTES, Drives
 from moskito.mushroom import MushroomBody, frame_features
 
-BRAIN_MS = 10.0        # tempo biologico simulado por passo de controle
+BRAIN_MS = 5.0         # tempo biologico por passo: metade do custo, loop 2x mais rapido
 PS_NEAR = 250.0        # leitura de proximidade que ja' conta como parede
 PS_LOOM = 1800.0       # leitura frontal que dispara o reflexo de fuga
 PS_STUCK = 2600.0      # encostado na parede
-MAX_OMEGA = 6.28       # rad/s, limite do e-puck
+MAX_OMEGA = 7.536      # rad/s, limite do e-puck v2
 WHEEL_R = 0.0205       # m
 MET_DIST = 0.30        # fracao da imagem ocupada que conta como "encontrou"
 
