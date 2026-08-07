@@ -34,7 +34,15 @@ class MushroomBody:
         self.k = max(1, int(N_KC * SPARSITY))
 
     def __call__(self, x: np.ndarray, learn: bool = True) -> float:
-        """Devolve novidade em [0,1]. `x` e' o vetor sensorial (ex: camera)."""
+        """Devolve novidade em [0,1]. `x` e' o vetor sensorial (ex: camera).
+
+        `learn` marca uma EXPOSICAO, nao um quadro. Chamar com learn=True a
+        cada passo de controle deprime a mesma vista ~60 vezes por segundo e
+        habitua o apartamento inteiro em segundos: medido em corrida real,
+        `nov` ficou em 0,00 com 35-60% do mapa aprendido, o que desliga a via
+        dopaminergica de exploracao inteira. Aprendizado de uma exposicao quer
+        UMA exposicao -- quem decide isso e' quem chama, pelo fluxo de camera.
+        """
         x = np.asarray(x, dtype=np.float32).ravel()
         x = (x - x.mean()) / (x.std() + 1e-6)     # invariante a iluminacao
 
@@ -42,9 +50,13 @@ class MushroomBody:
         on = np.argpartition(act, -self.k)[-self.k:]  # APL: so' as mais fortes
         novelty = float(self.w[on].mean())
 
+        # Esquecimento e' do TEMPO, nao da exposicao: um canto que voce nao ve'
+        # ha' muito tempo volta a ser interessante. Por isso fica fora do
+        # `learn` -- preso dentro dele, parar de aprender parava de esquecer, e
+        # o mapa nunca se recuperava.
+        self.w += RECOVERY * (1.0 - self.w)
         if learn:
             self.w[on] *= 1.0 - LR
-            self.w += RECOVERY * (1.0 - self.w)    # esquece devagar
         return novelty
 
     @property

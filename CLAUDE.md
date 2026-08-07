@@ -193,7 +193,30 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
    **consenso do neurônio** (`neurons.csv`) e exija `super_class == central`:
    sobram 704, dominados por PAM (261), PPL1 (16), OA-VUM/VPM (17).
 
-7. **Limiares de sensor saem do `lookupTable` do PROTO, não de chute.**
+7. **Estado interno com limiar binario em cima do ponto de operacao latcha.**
+   A fadiga somava passo fixo quando `drive > DRIVE_WALK` e subtraia abaixo.
+   Como `DRIVE_WALK = 0,9` cai exatamente onde a soma descendente opera, o
+   bicho oscilava em torno do limiar, a fadiga saturava em **12 s de parede** e
+   nunca descarregava: medido em corrida real, fadiga entre 0,80 e 1,00 por
+   duas horas de mosca, torneira aminergica a 5%, robo arrastado. Use
+   **integrador com vazamento** proporcional ao esforco (`drive - DRIVE_WALK`),
+   que vaza sempre e assenta em `esforco * t_down/t_up`.
+
+8. **Aprendizado de uma exposicao quer UMA exposicao.** `mb()` era chamado com
+   `learn=True` a cada passo de controle: a ~60 Hz a mesma vista era deprimida
+   sessenta vezes por segundo e uma unica revisita derrubava a novidade de
+   0,814 para 0,047. Com `nov = 0,00` a via dopaminergica de exploracao
+   inteira desliga, e a camera passa a so' agir pelo detector de pessoa.
+   Aprenda quando a cena MUDOU (`cam_flow > CAM_STILL`). E o esquecimento e' do
+   TEMPO, nao da exposicao -- deixe o `RECOVERY` fora do `if learn`, senao
+   parar de aprender para de esquecer.
+
+9. **O infravermelho tem piso ambiente: `psmax` fica em 66-79 sem nada por
+   perto.** Dividir por `PS_NEAR` sem subtrair esse piso dava `flow = 0,46` nos
+   DOIS lados o tempo todo -- ~19 mV parasitas em cada H2, permanentemente.
+   Use banda morta: `(psmax - PS_FLOOR) / (PS_NEAR - PS_FLOOR)`.
+
+10. **Limiares de sensor saem do `lookupTable` do PROTO, não de chute.**
    E-puck: `0mm=4095 5mm=2133 1cm=1466 2cm=384 4cm=158`.
 
    A terceira coluna do `lookupTable` é **ruído relativo**, e ela invalida o IR
@@ -205,7 +228,7 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
    IR só sobra o contato (4095 com ruído 0,002 contra limiar 1200), que é
    imune.
 
-8. **Detecção de "não estou saindo do lugar" é cópia eferente × fluxo óptico.**
+11. **Detecção de "não estou saindo do lugar" é cópia eferente × fluxo óptico.**
    Mandei roda e a cena não mudou ⇒ preso, não importa o que o IR diz (debaixo
    da poltrona ele lê 2–5 cm e nunca acusa contato). Comparar com o quadro
    **anterior** não serve: a 11 cm/s são 1,8 mm por passo, deslocamento
@@ -215,18 +238,18 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
    em parede texturizada quanto lisa; deslize de 0,05 contagem/passo não
    dispara.
 
-9. **Cena congelada escala direto para ré, sem gastar meia-volta.** Encunhado
+12. **Cena congelada escala direto para ré, sem gastar meia-volta.** Encunhado
    em vão estreito, girar só raspa — `Compass.back_out()` em vez da escalada
    `turn_back` → `turn_back` → ré, que desperdiça 6 s de manobra inútil.
 
-10. **O Webots grava estado dentro do `.wbt`** ao salvar (campos `hidden`,
+13. **O Webots grava estado dentro do `.wbt`** ao salvar (campos `hidden`,
    posição final). O robô passa a nascer onde travou. Use `make_world.py`.
 
-11. **O `.wbproj` guarda o estado da INTERFACE** e pode conter
+14. **O `.wbproj` guarda o estado da INTERFACE** e pode conter
    `centralWidgetVisible: 0` ou `renderingMode: WIREFRAME` — a janela abre em
    branco **sem nenhuma mensagem de erro**. Só resolve com o Webots fechado.
 
-12. **Sintoma no simulador ≠ bug no código.** Antes de mexer na lógica, confirme
+15. **Sintoma no simulador ≠ bug no código.** Antes de mexer na lógica, confirme
    que o mundo carrega (`webots --batch --stdout --mode=pause <world>`) e que o
    robô não está preso pela geometria. Já perdemos quatro rodadas por isso.
 

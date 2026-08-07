@@ -28,6 +28,11 @@ BRAIN_MS = 5.0         # tempo biologico por passo: metade do custo, loop 2x mai
 # Limiares tirados do lookupTable do E-puckDistanceSensor.proto, nao chutados:
 #   0mm=4095  5mm=2133  1cm=1466  1.5cm=601  2cm=384  3cm=235  4cm=158  5cm=120
 PS_NEAR = 150.0        # ~4 cm: comeca a desviar cedo, antes de encunhar
+# Piso ambiente. Em espaco aberto os sensores nao leem zero: medido em corrida
+# real, `psmax` fica entre 66 e 79 sem nada por perto. Sem subtrair esse piso,
+# `flow` dava 0,46/0,47 nos DOIS lados o tempo todo -- ~19 mV parasitas em cada
+# H2 permanentemente, e a escala de proximidade deslocada de meia unidade.
+PS_FLOOR = 85.0
 PS_LOOM = 600.0        # ~1.5 cm: reflexo de fuga
 PS_STUCK = 1200.0      # ~1.1 cm: contato
 # O IR NAO serve para medir progresso: no lookupTable o ruido e' uma FRACAO da
@@ -108,8 +113,8 @@ def main() -> None:
 
         # e-puck: ps0/ps1/ps2 = direita (frente -> lado), ps5/ps6/ps7 = esquerda.
         # Proximidade e' um proxy para fluxo optico ate' a camera virar sensor.
-        flow_r = float(np.clip(v[[0, 1, 2]].max() / PS_NEAR, 0, 1))
-        flow_l = float(np.clip(v[[5, 6, 7]].max() / PS_NEAR, 0, 1))
+        prox = lambda s: float(np.clip((v[s].max() - PS_FLOOR) / (PS_NEAR - PS_FLOOR), 0, 1))
+        flow_r, flow_l = prox([0, 1, 2]), prox([5, 6, 7])
         loom_r = 1.0 if v[0] > PS_LOOM else 0.0
         loom_l = 1.0 if v[7] > PS_LOOM else 0.0
 
@@ -119,7 +124,9 @@ def main() -> None:
             feat = frame_features(img, cw, ch)
             if feat_ref is not None:
                 cam_flow = float(np.abs(feat - feat_ref).mean())
-            novelty = mb(feat)
+            # Aprende so' quando a cena MUDOU: uma exposicao por vista nova, e
+            # nao 60 por segundo. `cam_flow` ja' mede exatamente isso.
+            novelty = mb(feat, learn=cam_flow > CAM_STILL)
             tgt_l, tgt_r, tgt_size, bearing = find_target(img, cw, ch)
 
         # PRESO = mandei andar e o mundo nao se mexeu. E' a comparacao entre

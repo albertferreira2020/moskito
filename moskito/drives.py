@@ -66,8 +66,8 @@ class Drives:
     t_frust_up: float = 3.0        # segundos de mosca preso ate' saturar
     t_frust_down: float = 8.0
     t_social: float = 2 * 3600.0
-    t_fat_up: float = 900.0        # s de mosca de marcha continua ate' saturar
-    t_fat_down: float = 300.0
+    t_fat_up: float = 5400.0       # s de mosca acumulando esforco
+    t_fat_down: float = 1800.0     # s de mosca descarregando
     history: list = field(default_factory=list)
 
     def update(self, dt_wall: float, *, drive: float = 0.0, looming: float = 0.0,
@@ -89,18 +89,26 @@ class Drives:
 
         self.social = 0.0 if met_someone else min(1.0, self.social + dt / self.t_social)
 
-        # Fadiga: custo metabolico da marcha. E' o que faz a caminhada TERMINAR
-        # sozinha -- ela alimenta o homeostato de sono, que inibe pelo dFB.
-        # Sem isso so' restaria um temporizador, que e' o que queremos evitar.
-        active = drive > DRIVE_WALK
-        self.fatigue += dt / (self.t_fat_up if active else -self.t_fat_down)
+        # Fadiga: custo metabolico da marcha, como INTEGRADOR COM VAZAMENTO.
+        # A versao anterior somava um passo fixo sempre que `drive > DRIVE_WALK`
+        # e subtraia quando abaixo -- e como DRIVE_WALK cai em cima do ponto de
+        # operacao, o bicho oscilava em torno do limiar, a fadiga saturava em
+        # 12 s de parede e NUNCA descarregava. Medido em corrida real: fadiga
+        # entre 0,80 e 1,00 por duas horas de mosca, com a torneira aminergica
+        # fechada a 5% o tempo todo. O robo ficava permanentemente exausto e
+        # arrastado, sem conseguir correr nem quando tudo mais pedia.
+        # Agora acumula proporcional ao ESFORCO (quanto passa do piso de
+        # marcha) e vaza sempre: o equilibrio e' esforco * t_down/t_up, entao
+        # marcha moderada da' fadiga moderada, e so' esforco sustentado satura.
+        esforco = max(0.0, drive - DRIVE_WALK)
+        self.fatigue += dt * (esforco / self.t_fat_up - self.fatigue / self.t_fat_down)
         self.fatigue = min(1.0, max(0.0, self.fatigue))
 
-        resting = not active
+        resting = drive <= DRIVE_WALK
         self.sleep += dt / (self.t_sleep if resting else self.t_wake) * (-1 if resting else 1)
         self.sleep = min(1.0, max(0.0, self.sleep))
 
-        self.hunger = 0.0 if at_dock else min(1.0, self.hunger + dt / self.t_hunger * (1.5 if active else 1.0))
+        self.hunger = 0.0 if at_dock else min(1.0, self.hunger + dt / self.t_hunger * (1.0 if resting else 1.5))
 
         self.arousal = min(1.0, self.arousal * math.exp(-dt / self.t_arousal) + looming)
         if place_novelty is not None:
