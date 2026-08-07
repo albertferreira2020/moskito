@@ -31,18 +31,31 @@ class Drives:
     hunger: float = 0.3        # fome              [0,1]  (NPF / AKH)
     arousal: float = 0.0       # alerta            [0,1]  (octopamina)
     novelty: float = 1.0       # novidade do lugar [0,1]  (corpo cogumelar)
+    frustration: float = 0.0   # "isso nao esta' dando certo" [0,1]
+    social: float = 0.0        # vontade de achar alguem      [0,1]
 
     t_wake: float = 16 * 3600.0    # s de mosca para saturar a pressao de sono
     t_sleep: float = 6 * 3600.0    # s de mosca para descarregar
     t_hunger: float = 6 * 3600.0
     t_arousal: float = 120.0       # octopamina decai em ~2 min
+    t_frust_up: float = 3.0        # segundos de mosca preso ate' saturar
+    t_frust_down: float = 8.0
+    t_social: float = 2 * 3600.0
     history: list = field(default_factory=list)
 
     def update(self, dt_wall: float, *, moving: bool, looming: float = 0.0,
-               at_dock: bool = False, place_novelty: float | None = None):
+               at_dock: bool = False, place_novelty: float | None = None,
+               stuck: bool = False, met_someone: bool = False):
         """`dt_wall` em segundos de relogio de parede."""
         dt = dt_wall * TIME_SCALE  # segundos de mosca
         self.hour = (self.hour + dt / 3600.0) % 24.0
+
+        # Frustracao: sobe rapido enquanto empurra parede sem sair do lugar,
+        # cai rapido assim que destrava. E' o sinal de "isso esta' chato".
+        self.frustration += dt / (self.t_frust_up if stuck else -self.t_frust_down)
+        self.frustration = min(1.0, max(0.0, self.frustration))
+
+        self.social = 0.0 if met_someone else min(1.0, self.social + dt / self.t_social)
 
         resting = not moving
         self.sleep += dt / (self.t_sleep if resting else self.t_wake) * (-1 if resting else 1)
@@ -69,8 +82,14 @@ class Drives:
         return 1.0 + 2.0 * self.arousal
 
     def drive_forward(self) -> float:
-        """Empurra os DNs de caminhada. Curiosidade so' pesa se estiver acordado."""
-        return self.awake * (0.3 + 0.7 * self.novelty)
+        """Empurra os DNs de caminhada. Curiosidade so' pesa se estiver acordado.
+
+        Frustracao corta o avanco: nao adianta empurrar mais forte a parede.
+        Vontade social sustenta um piso -- procurar alguem vence o tedio de um
+        lugar ja' conhecido.
+        """
+        curiosity = 0.3 + 0.7 * max(self.novelty, 0.6 * self.social)
+        return self.awake * curiosity * (1.0 - 0.8 * self.frustration)
 
     def drive_odor(self) -> float:
         """Abre a via do 'cheiro' (beacon da base). Mosca saciada ignora comida."""
@@ -81,4 +100,5 @@ class Drives:
 
     def __str__(self) -> str:
         return (f"{self.hour:05.2f}h sono={self.sleep:.2f} fome={self.hunger:.2f} "
-                f"alerta={self.arousal:.2f} nov={self.novelty:.2f} acordado={self.awake:.2f}")
+                f"alerta={self.arousal:.2f} nov={self.novelty:.2f} frust={self.frustration:.2f} "
+                f"social={self.social:.2f} acordado={self.awake:.2f}")

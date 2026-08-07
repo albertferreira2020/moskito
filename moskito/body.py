@@ -1,10 +1,17 @@
 """Adaptador entre o cerebro da mosca e um robo de tracao diferencial.
 
-Entrada: features visuais -> neuronios de projecao do lobulo optico (LPLC2/LC11).
-Saida:  neuronios descendentes -> velocidade das rodas.
+Entrada -> portas do lobulo optico:
+  H2      fluxo optico horizontal, CONTRALATERAL -- e' a via de virada
+  LPLC2   looming -> fibra gigante -> fuga (parada, nao steering)
+  LC11    canal de "cheiro" da base, aberto pela fome
 
-O par DNa02 e' o steering da mosca: ela vira para o lado do DNa02 mais ativo.
-Isso mapeia direto em v_esq/v_dir, sem inventar nada.
+Saida <- neuronios descendentes:
+  DN_L/DN_R  populacao inteira (647/650); o steering e' IPSILATERAL
+  MDN        moonwalker, marcha re' -- acionado pela frustracao
+
+As duas lateralidades se cancelam e dao o sinal certo: obstaculo a esquerda ->
+H2_L -> descendentes DIREITOS -> curva a DIREITA -> desvia. Para ir na direcao
+de algo (aproximar em vez de desviar), injeta-se do lado oposto.
 """
 
 from __future__ import annotations
@@ -25,15 +32,41 @@ TURN_BIAS = 0.0
 
 
 class Body:
-    def __init__(self, brain: Brain, ports: dict[str, list[int]], drives: Drives | None = None):
+    def __init__(self, brain: Brain, ports: dict[str, list[int]], drives: Drives | None = None,
+                 seed: int = 0):
         self.brain, self.ports = brain, ports
         self.drives = drives or Drives()
         self.inject = np.zeros(brain.n, dtype=np.float32)
+        self.rng = np.random.default_rng(seed)
+        self._escape: str | None = None
 
     def sense(self, *, flow_left: float = 0.0, flow_right: float = 0.0,
-              looming_left: float = 0.0, looming_right: float = 0.0, odor: float = 0.0):
+              looming_left: float = 0.0, looming_right: float = 0.0, odor: float = 0.0,
+              target_left: float = 0.0, target_right: float = 0.0):
         """Injeta nas portas. Valores em mV (limiar do neuronio = 7 mV)."""
         self.inject[:] = 0.0
+        d = self.drives
+
+        # DESTRAVAR. A mosca tem marcha re' propria: o MDN (moonwalker), que
+        # ativa a caminhada para tras E inibe a de frente. E' literalmente o
+        # circuito de sair de beco. Frustracao aciona ele.
+        self._put("MDN", 14.0 * d.frustration)
+
+        # Escolhe UM lado para escapar e se compromete com ele enquanto durar a
+        # frustracao. Sem isso o bicho fica oscilando na frente da parede.
+        if d.frustration > 0.3:
+            if self._escape is None:
+                self._escape = "L" if self.rng.random() < 0.5 else "R"
+            self._put(f"H2_{self._escape}", 30.0 * d.frustration)
+        else:
+            self._escape = None
+
+        # APROXIMAR. H2 vira para o lado CONTRARIO ao estimulo (e' via de
+        # desvio), entao para ir na direcao de alguem injeta-se do lado oposto.
+        gate = d.social * d.awake
+        self._put("H2_R", target_left * 45.0 * gate)
+        self._put("H2_L", target_right * 45.0 * gate)
+
         # STEERING: H2 e' a celula tangencial da placa lobular que projeta
         # CONTRALATERAL. Fluxo optico a esquerda -> descendentes direitos ->
         # vira para a direita, ou seja, desvia. Medido em scripts/trace.py:
@@ -71,7 +104,7 @@ class Body:
         dl, dr = r("DN_L"), r("DN_R")
         # Steering tambem e' comportamento: bicho dormindo nao vira. O alerta
         # segura um piso, senao um sobressalto nao conseguiria desviar.
-        steer_gate = max(self.drives.awake, self.drives.arousal)
+        steer_gate = max(self.drives.awake, self.drives.arousal, self.drives.frustration)
         turn = K_ANGULAR * steer_gate * ((dr - dl) / max(dr + dl, 1e-9) - TURN_BIAS)
 
         # AVANCO vem do estado interno, nao do conectoma: no ponto de operacao
@@ -81,8 +114,12 @@ class Body:
         forward = V_CRUISE * self.drives.drive_forward()
         reverse = K_REVERSE * r("MDN")
 
+        # Steering e' IPSILATERAL: descendentes mais ativos de um lado fazem a
+        # mosca virar para AQUELE lado (DNa02 direito -> curva a direita).
+        # Combinado com H2 sendo contralateral, fecha certo: obstaculo a
+        # esquerda -> H2_L -> descendentes direitos -> vira a direita, desvia.
         v = float(np.clip(forward - reverse, -V_MAX, V_MAX))
-        return float(np.clip(v - turn, -V_MAX, V_MAX)), float(np.clip(v + turn, -V_MAX, V_MAX))
+        return float(np.clip(v + turn, -V_MAX, V_MAX)), float(np.clip(v - turn, -V_MAX, V_MAX))
 
     def rates(self) -> dict[str, float]:
         keys = ("DN_L", "DN_R", "DNa02_L", "DNa02_R", "MDN")
