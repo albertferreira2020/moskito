@@ -21,7 +21,9 @@ def _circadian(hour: float) -> float:
     wrap = lambda h: (hour - h + 12) % 24 - 12  # distancia circular em horas
     dawn = math.exp(-(wrap(7.0) ** 2) / 18.0)
     dusk = math.exp(-(wrap(19.0) ** 2) / 18.0)
-    return 0.1 + 0.9 * max(dawn, dusk)
+    # O piso segura um andar decente fora dos picos. Quem apaga o bicho a
+    # noite e' a pressao de sono, nao o relogio.
+    return 0.45 + 0.55 * max(dawn, dusk)
 
 
 @dataclass
@@ -88,7 +90,7 @@ class Drives:
         Vontade social sustenta um piso -- procurar alguem vence o tedio de um
         lugar ja' conhecido.
         """
-        curiosity = 0.3 + 0.7 * max(self.novelty, 0.6 * self.social)
+        curiosity = 0.6 + 0.4 * max(self.novelty, 0.6 * self.social)
         return self.awake * curiosity * (1.0 - 0.8 * self.frustration)
 
     def drive_odor(self) -> float:

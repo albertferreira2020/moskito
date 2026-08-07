@@ -27,7 +27,8 @@ from .drives import Drives
 # de fazer curva, porque uma roda vai ao maximo e a outra ao minimo.
 # V_CRUISE deixa folga para a curva caber dentro do teto.
 CRUISE_FRAC = 0.75     # fracao do teto usada em cruzeiro; o resto e' folga p/ curva
-K_ANGULAR = 0.12
+K_ANGULAR = 0.45          # curvatura: agora multiplica velocidade, nao e' velocidade
+PIVOT = 0.25              # quanto de giro sobra com o robo parado (para destravar)
 K_REVERSE = 2.0
 V_MAX = 0.154          # so' um padrao: quem manda e' motor.getMaxVelocity()
 # Vies em repouso da assimetria descendente. Em w_syn=0.18 a resposta ja' e'
@@ -125,7 +126,7 @@ class Body:
         # Cruzeiro faz ARCO (continua avancando enquanto vira); frustrado
         # pivota, que e' o que tira de beco. Um ganho so' nao serve para os dois.
         agility = 1.0 + 3.0 * self.drives.frustration
-        turn = K_ANGULAR * agility * steer_gate * ((dr - dl) / max(dr + dl, 1e-9) - TURN_BIAS)
+        assim = (dr - dl) / max(dr + dl, 1e-9) - TURN_BIAS
 
         # AVANCO vem do estado interno, nao do conectoma: no ponto de operacao
         # calibrado a populacao descendente fica em 0-1 Hz, insuficiente para
@@ -133,13 +134,19 @@ class Body:
         # O steering acima E' do conectoma; isto aqui e' o vies central.
         forward = CRUISE_FRAC * self.v_max * self.drives.drive_forward()
         reverse = K_REVERSE * r("MDN")
+        v = float(np.clip(forward - reverse, -self.v_max, self.v_max))
+
+        # O giro escala com a VELOCIDADE, senao o mesmo diferencial de rodas
+        # vira arco quando rapido e piao quando devagar -- e o bicho passa a
+        # girar mais do que anda toda vez que um drive baixa o avanco.
+        # PIVOT deixa um resto de giro com o robo parado, para destravar.
+        turn = K_ANGULAR * agility * steer_gate * assim * (abs(v) + PIVOT * self.v_max)
 
         # Steering e' IPSILATERAL: descendentes mais ativos de um lado fazem a
         # mosca virar para AQUELE lado (DNa02 direito -> curva a direita).
         # Combinado com H2 sendo contralateral, fecha certo: obstaculo a
         # esquerda -> H2_L -> descendentes direitos -> vira a direita, desvia.
         vm = self.v_max
-        v = float(np.clip(forward - reverse, -vm, vm))
         return float(np.clip(v + turn, -vm, vm)), float(np.clip(v - turn, -vm, vm))
 
     def rates(self) -> dict[str, float]:
