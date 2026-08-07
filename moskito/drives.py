@@ -127,17 +127,32 @@ class Drives:
         - PPL1: dopamina de punicao. Sobe com frustracao.
         - ER5 + dFB: o freio. Pressao de sono E fadiga entram juntas; o R5
           acumula necessidade de sono com a vigilia e o dFB e' o interruptor.
+
+        O SONO FECHA A TORNEIRA AMINERGICA, e nao so' excita o dFB. Medimos que
+        excitar ER5+dFB nao chega aos descendentes -- com 55 mV neles a
+        populacao nao cai (armadilha 5), porque o alvo do circuito de sono e' o
+        sistema de arousal, nao o barramento motor. Com o freio so' pelo dFB,
+        mosca DORMINDO recebia 36,6 mV de octopamina contra 52,2 da motivada, e
+        a separacao entre os dois estados dava 0,003 Hz: nula. Suprimir a
+        liberacao de amina e' o que o dFB/R5 de fato faz, e e' onde o efeito
+        cabe. Continua sendo estado -> nucleo; nada disto toca motor.
+
+        O alerta (octopamina de sobressalto) passa por cima: mosca dormindo
+        acorda com tapa.
         """
         dawn, dusk = _clock(self.hour)
+        # Quanto a maquinaria aminergica consegue liberar. Sono e fadiga fecham.
+        desperto = max(1.0 - max(self.sleep, self.fatigue), self.arousal)
         explore = self.novelty * (0.5 + 0.5 * self.hunger)
+        motivo = max(self.arousal, self.social, self.hunger)
         return {
             "SENSORY": TONIC,
             "CLOCK_M": M_CLOCK * dawn,
             "CLOCK_E": M_CLOCK * dusk,
             "CLOCK_D": M_CLOCK * max(dawn, dusk),
-            "OCT": M_OCT * min(1.0, 0.35 + 0.65 * max(self.arousal, self.social, self.hunger)),
-            "DA_REW": M_DA * explore,
-            "DA_PUN": M_PUN * self.frustration,
+            "OCT": M_OCT * desperto * min(1.0, 0.15 + 0.85 * motivo),
+            "DA_REW": M_DA * desperto * explore,
+            "DA_PUN": M_PUN * desperto * self.frustration,
             "SLEEP": M_SLEEP * min(1.0, self.sleep + self.fatigue),
         }
 
