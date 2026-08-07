@@ -38,37 +38,66 @@ flowchart TD
         CAM["Câmera 64x48"]
     end
 
-    subgraph portas["Portas do conectoma — body.py"]
-        H2["H2 · fluxo óptico<br/>contralateral, ±0,23<br/>1 neurônio/lado: SATURA"]
-        LPLC["LPLC2 · looming<br/>fuga, não steering"]
-        PFL["PFL3 · rumo<br/>±0,85 — a porta forte"]
-        MDN["MDN · marcha ré<br/>moonwalker"]
-    end
-
-    subgraph estados["Estados internos — drives.py + compass.py + mushroom.py"]
-        DR["circadiano · sono · fome<br/>alerta · frustração · social"]
-        CX["Compass: bump de rumo<br/>+ menotaxia"]
+    subgraph estados["Estados internos — drives.py (NÃO estão no conectoma)"]
+        DR["circadiano · sono · fome · fadiga<br/>alerta · frustração · social"]
         MB["Corpo cogumelar<br/>novidade de lugar"]
+        CX["Compass: bump de rumo<br/>+ menotaxia"]
     end
 
-    BRAIN["brain.py · LIF orientado a eventos<br/>139.255 neurônios · 2,66M sinapses<br/>W_SYN = 0,18"]
-    DN["DN_L / DN_R · 647/650<br/>steering IPSILATERAL"]
+    subgraph nucleos["Núcleos moduladores — neurônios REAIS do conectoma"]
+        CLK["s-LNv · 8 · manhã<br/>LNd · 12 · entardecer<br/>DN1p · 41"]
+        OA["OA-VUM/VPM · 17<br/>octopamina"]
+        DA["PAM · 307 (novidade)<br/>PPL1 · 16 (punição)"]
+        SLP["ER5 + dFB · 160<br/>o freio"]
+    end
+
+    subgraph portas["Portas sensoriais do conectoma — body.py"]
+        H2["H2 · fluxo óptico<br/>contralateral"]
+        LPLC["LPLC2 · looming<br/>fuga, não steering"]
+        PFL["PFL3 · rumo<br/>a porta forte"]
+        MDN["MDN · marcha ré"]
+    end
+
+    TON["aferência tônica CONSTANTE<br/>17.550 mecanossensoriais · 9 mV<br/>NÃO é comando de andar"]
+
+    subgraph rede["brain.py · 139.255 neurônios"]
+        FAST["matriz RÁPIDA · 2,66M sinapses<br/>ionotrópica · ms · ACH/GABA/GLUT"]
+        MODF["campo MODULADOR · 16.482 arestas<br/>metabotrópico · τ=3 s<br/>704 aminérgicos centrais<br/>→ excitabilidade, não corrente"]
+        ADAPT["adaptação lenta · τ=4 s<br/>termina o surto sozinha"]
+    end
+
+    DN["população descendente<br/>647 esq / 650 dir"]
+    SOMA["SOMA → avanço<br/>piso de recrutamento do VNC"]
+    DIF["DIFERENÇA → curva"]
     RODAS["v_esq, v_dir"]
 
     CAM --> MB --> DR
     CAM -->|camisa vermelha| CX
     PS -->|flow_r - flow_l| CX
     PS --> H2 & LPLC
-    DR --> CX
+    DR --> CLK & OA & DA & SLP
     CX -->|erro de rumo + desvio| PFL
     DR -->|frustração| MDN
-    H2 & LPLC & PFL & MDN --> BRAIN --> DN --> RODAS
+    CLK & OA & DA & SLP --> FAST
+    TON --> FAST
+    H2 & LPLC & PFL & MDN --> FAST
+    OA & DA & SLP -.->|libera amina| MODF
+    MODF -.->|multiplica entrada| FAST
+    ADAPT -.->|freia| FAST
+    FAST --> DN
+    DN --> SOMA & DIF
+    SOMA & DIF --> RODAS
     RODAS -.->|ω| CX
 ```
 
 **A fronteira que importa:** `Body` fala em `(v_esq, v_dir)` e nada mais. O
 controller do Webots é um adaptador fino, e o firmware do ESP32-S3 vai ocupar
 exatamente o mesmo lugar. Nenhuma decisão mora no controller.
+
+**A segunda fronteira, mais importante:** nenhum estado interno toca motor.
+`drives.modulation()` só devolve corrente em mV para núcleos que existem no
+FlyWire. A velocidade é lida da taxa de disparo dos descendentes — como um
+eletrodo, não como uma escolha do software.
 
 ---
 
@@ -78,11 +107,21 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
 
 - **É conectoma:** todo o steering. Rumo e desvio entram pelo PFL3, propagam
   pela fiação real e saem nos descendentes.
-- **NÃO é conectoma:** o avanço (`V_CRUISE * drive_forward()`), os seis estados
-  internos, e o anel de rumo — o `Compass` modela o *resultado* do anel
-  EPG/PEN (fase que integra rotação), não a dinâmica de spikes. EPG, PEN e
-  Delta7 estão no conectoma (47/24/42 neurônios) e a classe pode ser trocada
-  pela rede real sem mexer no resto.
+- **É conectoma (novo):** o avanço. Não existe mais `V_CRUISE *
+  drive_forward()`. A velocidade é `K_V * max(0, DN_soma - VNC_RECRUIT)`, uma
+  leitura da população descendente. Os estados internos só alcançam neurônios
+  moduladores identificados; para virar movimento, a excitação tem de
+  atravessar a rede.
+- **NÃO é conectoma:** os estados internos em si (relógio, sono, fome, fadiga,
+  novidade) — o FlyWire dá fiação, não dá dopamina nem relógio. O anel de rumo
+  — o `Compass` modela o *resultado* do anel EPG/PEN (fase que integra
+  rotação), não a dinâmica de spikes. EPG, PEN e Delta7 estão no conectoma
+  (47/24/42 neurônios) e a classe pode ser trocada pela rede real sem mexer no
+  resto.
+- **NÃO é conectoma, e é a peça honesta que falta:** o piso `VNC_RECRUIT`. O
+  FAFB é um conectoma de **cérebro**; o gerador de padrão da marcha fica no
+  cordão nervoso ventral, que não está no dataset. O piso modela o
+  recrutamento que o VNC faria. É uma retificação contínua, não um `if anda`.
 
 ---
 
@@ -99,6 +138,12 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
 | Cruzeiro medido | 11,2 cm/s |
 | Alinhar em 90° | ~2 s, 1,2° residual |
 | Corpo cogumelar | 1,00 → 0,011 após 9 visitas |
+| Arestas moduladoras (aminérgicos centrais) | 16.482, sobre 704 fontes |
+| Alvos do campo modulador | 7.105 (5,1%); DN 19,5%, MDN 100% |
+| `DNp09` com aferência tônica | 19,45 Hz (antes: não disparava) |
+| DN soma vs tônico mecanossensorial | 8 mV → 0,47 Hz; 11 mV → 1,17 Hz |
+| Lateralização PFL3 com rede acordada | faixa 0,62–0,84 (sobrevive) |
+| Latch sem adaptação lenta | 2,3 Hz mantidos 10 s após remover OCT |
 
 ---
 
@@ -119,7 +164,30 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
    de `W_SYN` vai criar um. Foi assim que descobrimos que LPLC2 era a porta
    errada (fuga, não steering) e H2 a certa.
 
-4. **Limiares de sensor saem do `lookupTable` do PROTO, não de chute.**
+4. **A rede LATCHA, e nenhum script tinha rodado tempo suficiente para ver.**
+   Todo script deste projeto rodava < 1 s (o `W_SYN = 0,18` foi calibrado com
+   350 ms). Em 20 s de simulação aparece outra coisa: com tônico de 9 mV e um
+   pulso de octopamina de 14 mV a população descendente sobe para ~2,3 Hz e
+   **fica lá depois que a octopamina volta a zero** (1,908 Hz dez segundos
+   depois). É biestável: OCT ≥ 10 mV é um interruptor de ida, e o ER5/dFB não
+   traz de volta nem a 28 mV. Sem adaptação lenta a rede não tem como sair.
+   **Regra: qualquer mudança no ponto de operação precisa de um traço de 20 s+,
+   não de um `run()` de 300 ms.**
+
+5. **Injetar forte num núcleo modulador o transforma em driver.** Com 34–60 mV
+   em centenas de neurônios (limiar 7 mV) os núcleos aminérgicos passam a
+   excitar a rede pela matriz *rápida* e afogam a modulação: medimos os quatro
+   estados internos convergindo para 2,0–2,3 Hz, indistinguíveis. É a armadilha
+   2 noutra roupa. Núcleo modulador quer injeção perto do limiar, não acima.
+
+6. **Predição de neurotransmissor por SINAPSE não serve para achar modulador.**
+   Ela marca como aminérgica qualquer sinapse solta de mecanorreceptor
+   (BM_InOm), fotorreceptor e ORN — 18.771 "fontes". Isso fecha um laço
+   sensorial → excitabilidade → sensorial que se auto-alimenta. Use o NT de
+   **consenso do neurônio** (`neurons.csv`) e exija `super_class == central`:
+   sobram 704, dominados por PAM (261), PPL1 (16), OA-VUM/VPM (17).
+
+7. **Limiares de sensor saem do `lookupTable` do PROTO, não de chute.**
    E-puck: `0mm=4095 5mm=2133 1cm=1466 2cm=384 4cm=158`.
 
    A terceira coluna do `lookupTable` é **ruído relativo**, e ela invalida o IR
@@ -131,7 +199,7 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
    IR só sobra o contato (4095 com ruído 0,002 contra limiar 1200), que é
    imune.
 
-5. **Detecção de "não estou saindo do lugar" é cópia eferente × fluxo óptico.**
+8. **Detecção de "não estou saindo do lugar" é cópia eferente × fluxo óptico.**
    Mandei roda e a cena não mudou ⇒ preso, não importa o que o IR diz (debaixo
    da poltrona ele lê 2–5 cm e nunca acusa contato). Comparar com o quadro
    **anterior** não serve: a 11 cm/s são 1,8 mm por passo, deslocamento
@@ -141,18 +209,18 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
    em parede texturizada quanto lisa; deslize de 0,05 contagem/passo não
    dispara.
 
-6. **Cena congelada escala direto para ré, sem gastar meia-volta.** Encunhado
+9. **Cena congelada escala direto para ré, sem gastar meia-volta.** Encunhado
    em vão estreito, girar só raspa — `Compass.back_out()` em vez da escalada
    `turn_back` → `turn_back` → ré, que desperdiça 6 s de manobra inútil.
 
-7. **O Webots grava estado dentro do `.wbt`** ao salvar (campos `hidden`,
+10. **O Webots grava estado dentro do `.wbt`** ao salvar (campos `hidden`,
    posição final). O robô passa a nascer onde travou. Use `make_world.py`.
 
-8. **O `.wbproj` guarda o estado da INTERFACE** e pode conter
+11. **O `.wbproj` guarda o estado da INTERFACE** e pode conter
    `centralWidgetVisible: 0` ou `renderingMode: WIREFRAME` — a janela abre em
    branco **sem nenhuma mensagem de erro**. Só resolve com o Webots fechado.
 
-9. **Sintoma no simulador ≠ bug no código.** Antes de mexer na lógica, confirme
+12. **Sintoma no simulador ≠ bug no código.** Antes de mexer na lógica, confirme
    que o mundo carrega (`webots --batch --stdout --mode=pause <world>`) e que o
    robô não está preso pela geometria. Já perdemos quatro rodadas por isso.
 
@@ -200,13 +268,30 @@ O que funciona melhor neste projeto, na ordem:
 Funciona: steering pelo conectoma, ciclo circadiano, corpo cogumelar,
 frustração → MDN, escalada de fuga (meia-volta → ré reta), busca por pessoa.
 
+A hipótese antiga ("falta drive sensorial distribuído") **estava certa** e foi
+confirmada: com aferência tônica nos 17.550 mecanossensoriais o `DNp09` dispara
+a 19,45 Hz e a população descendente responde de forma graduada. A arquitetura
+de avanço emergente está implementada (matriz moduladora, campo de
+excitabilidade, leitura soma/diferença).
+
 Aberto, em ordem de valor:
 
-1. **Avanço não vem do conectoma.** No ponto de operação a população
-   descendente fica em 0–1 Hz e `DNp09` não dispara nem com injeção acima do
-   limiar. Hipótese: falta o drive sensorial distribuído que a mosca real tem
-   (~17k sensoriais + 78k ópticos ativos o tempo todo) — testar injetando ruído
-   de fundo nas populações sensoriais.
+1. **O ponto de operação do avanço NÃO convergiu.** A arquitetura está no
+   lugar, a calibração não. Medido com traço de 40 s:
+
+   | estado interno | DN soma | v média |
+   |---|---|---|
+   | explorando | 1,521 Hz | 7,76 cm/s |
+   | lugar velho | 1,477 Hz | 7,43 cm/s |
+   | dormindo | 1,361 Hz | 6,29 cm/s |
+
+   Os estados **não diferenciam** — mosca dormindo anda a 6,3 cm/s. São quatro
+   parâmetros acoplados (`W_SYN`, `TONIC`, `B_SLOW`, `K_MOD`) e três regimes,
+   nenhum deles certo: sem `B_SLOW` a rede latcha (armadilha 4); com
+   `B_SLOW = 0,15` morre (0,08 Hz); em 0,02 fica monoestável mas surda ao
+   estado. Falta a busca no espaço desses quatro, com objetivo explícito:
+   separação entre estados **e** ausência de latch em 20 s **e** lateralização
+   preservada. Cada avaliação custa ~40 s de parede.
 2. **Porta olfativa de verdade.** O "cheiro" da base entra pelas LC11; falta
    resolver os ORNs do lobo antenal.
 3. **Trocar o `Compass` pela rede EPG/PEN/Delta7 real.**

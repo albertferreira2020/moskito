@@ -94,8 +94,8 @@ def main() -> None:
     v_max = max_omega * WHEEL_R
 
     print("carregando conectoma...", flush=True)
-    w, _, ports = load(Path(__file__).resolve().parents[1] / "data/brain.npz")
-    body = Body(Brain(w, seed=11), ports, Drives(), seed=11, v_max=v_max)
+    w, mod, _, ports = load(Path(__file__).resolve().parents[1] / "data/brain.npz")
+    body = Body(Brain(w, mod, seed=11), ports, Drives(), seed=11, v_max=v_max)
     mb = MushroomBody(n_in=16 * 12, seed=11) if cam is not None else None
     cx = Compass(seed=11)
     print(f"pronto: {w.shape[0]:,} neuronios, dia da mosca = {DAY_MINUTES:.0f} min", flush=True)
@@ -165,8 +165,10 @@ def main() -> None:
                    goal_left=goal_l, goal_right=goal_r, reversing=recuando)
         vl, vr = body.act(BRAIN_MS)
 
-        speed = abs(vl + vr) / 2
-        body.drives.update(dt / 1000.0, moving=speed > 0.01,
+        # A fadiga vem da atividade do CIRCUITO, nao da velocidade das rodas:
+        # ler a saida motora aqui fecharia um laco em cima do que se quer
+        # explicar. O que cansa a mosca e' o cerebro trabalhando.
+        body.drives.update(dt / 1000.0, drive=body.drive,
                            looming=max(loom_l, loom_r),
                            at_dock=body.drives.hunger > 0.9,
                            place_novelty=novelty, stuck=stuck,
@@ -179,7 +181,8 @@ def main() -> None:
         if step % 50 == 0:
             r = body.rates()
             seen = f" ALGUEM({tgt_size:.2f})" if tgt_size > 0.01 else ""
-            print(f"{body.drives}  DN={r['DN_L']:5.2f}/{r['DN_R']:5.2f}  "
+            print(f"{body.drives}  DN={r['DN_L']:5.2f}/{r['DN_R']:5.2f}"
+                  f" soma={body.drive:5.2f}{'' if body.walking() else ' (parado)'}  "
                   f"prox E/D={flow_l:.2f}/{flow_r:.2f} psmax={v.max():.0f} "
                   f"cam={cam_flow:5.2f}"
                   f"{'  RE-RETA' if recuando else '  CENA-PARADA' if frozen else '  PRESO' if stuck else ''}"

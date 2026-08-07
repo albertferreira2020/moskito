@@ -29,8 +29,8 @@ p.add_argument("--brain-ms", type=float, default=10.0, help="ms biologicos por p
 p.add_argument("--out", default="demo.png")
 a = p.parse_args()
 
-w, _, ports = load()
-body = Body(Brain(w, seed=7), ports, Drives())
+w, mod, _, ports = load()
+body = Body(Brain(w, mod, seed=7), ports, Drives())
 rng = np.random.default_rng(7)
 
 # O dia inteiro cabe em `ticks` passos de relogio de parede.
@@ -53,10 +53,8 @@ for i in range(a.ticks):
                looming_left=loom_l, looming_right=loom_r, odor=d.hunger)
     vl, vr = body.act(a.brain_ms)
 
-    speed = abs(vl + vr) / 2      # translacao liquida: girar no lugar nao e' "andar"
-    moving = speed > 0.01
     at_dock = d.hunger > 0.9  # chegou na base seguindo o "cheiro" e recarregou
-    d.update(dt_wall, moving=moving, looming=max(loom_l, loom_r), at_dock=at_dock,
+    d.update(dt_wall, drive=body.drive, looming=max(loom_l, loom_r), at_dock=at_dock,
              place_novelty=float(np.clip(0.5 + 0.5 * np.sin(i / 37.0), 0, 1)))
 
     r = body.rates()

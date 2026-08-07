@@ -5,13 +5,26 @@ Entrada -> portas do lobulo optico:
   LPLC2   looming -> fibra gigante -> fuga (parada, nao steering)
   LC11    canal de "cheiro" da base, aberto pela fome
 
-Saida <- neuronios descendentes:
-  DN_L/DN_R  populacao inteira (647/650); o steering e' IPSILATERAL
-  MDN        moonwalker, marcha re' -- acionado pela frustracao
+Entrada -> nucleos aminergicos (drives.modulation()):
+  s-LNv / LNd / DN1p   relogio circadiano
+  OA-VUM / OA-VPM      octopamina: alerta, propensao a estar ativo
+  PAM / PPL1           dopamina: novidade e punicao
+  ER5 / dFB            homeostato de sono: o freio
 
-As duas lateralidades se cancelam e dao o sinal certo: obstaculo a esquerda ->
-H2_L -> descendentes DIREITOS -> curva a DIREITA -> desvia. Para ir na direcao
-de algo (aproximar em vez de desviar), injeta-se do lado oposto.
+Saida <- neuronios descendentes:
+  DN_L + DN_R  a MESMA populacao da' as duas coisas:
+                 SOMA      -> avanco
+                 DIFERENCA -> curva (steering IPSILATERAL)
+  MDN          moonwalker, marcha re' -- acionado pela frustracao
+
+Ler avanco na soma e curva na diferenca nao e' truque de engenharia: e' como a
+populacao descendente da mosca de fato codifica marcha, com o modo comum
+carregando velocidade de avanco e o modo diferencial carregando rotacao.
+
+NAO HA' COMANDO DE AVANCO NESTE ARQUIVO. `forward` e' uma leitura da taxa de
+disparo, como um eletrodo -- nao um valor que o software escolhe. Se a rede
+estiver quieta, o robo fica parado, e nenhum estado interno pode passar por
+cima disso.
 """
 
 from __future__ import annotations
@@ -19,18 +32,27 @@ from __future__ import annotations
 import numpy as np
 
 from .brain import Brain
-from .drives import Drives
+from .drives import DRIVE_WALK, Drives
 
 # Ganhos do adaptador. Calibracao, nao anatomia.
 # V_MAX e' o teto FISICO do e-puck v2: 7.536 rad/s * 0.0205 m de roda. Mandar
 # mais que isso nao acelera nada, so' satura -- e saturado o robo pivota em vez
 # de fazer curva, porque uma roda vai ao maximo e a outra ao minimo.
-# V_CRUISE deixa folga para a curva caber dentro do teto.
-CRUISE_FRAC = 0.75     # fracao do teto usada em cruzeiro; o resto e' folga p/ curva
-K_ANGULAR = 0.45          # curvatura: agora multiplica velocidade, nao e' velocidade
+K_V = 0.095               # m/s por Hz recrutado -- a escala de leitura
+# O FAFB e' um conectoma de CEREBRO. O gerador de padrao da marcha nao esta'
+# nele: fica no cordao nervoso ventral, que nao foi reconstruido aqui. O VNC
+# nao repassa qualquer atividade descendente -- ele RECRUTA, e so' passa a
+# produzir passo acima de um piso de drive. Sem esse piso o basal de 0,74 Hz
+# (medido: rede acordada, sem motivacao nenhuma) viraria deslize permanente e o
+# robo nunca ficaria parado de verdade.
+# Nao e' um `if anda`: e' uma retificacao continua. Logo acima do piso o passo
+# e' lento; nada muda de modo, nao ha' decisao binaria em lugar nenhum.
+VNC_RECRUIT = 0.80        # Hz de populacao descendente para recrutar marcha
+K_ANGULAR = 0.45          # curvatura: multiplica velocidade, nao e' velocidade
 PIVOT = 0.25              # quanto de giro sobra com o robo parado (para destravar)
-K_REVERSE = 2.0
-V_MAX = 0.154          # so' um padrao: quem manda e' motor.getMaxVelocity()
+K_REVERSE = 0.004         # m/s por Hz de MDN
+V_MAX = 0.154             # so' um padrao: quem manda e' motor.getMaxVelocity()
+DRIVE_FLOOR = 0.25        # Hz: abaixo disso a diferenca L/R e' ruido, nao comando
 # Vies em repouso da assimetria descendente. Em w_syn=0.18 a resposta ja' e'
 # espelhada (+0.228 / -0.218), entao nao ha' vies a subtrair.
 TURN_BIAS = 0.0
@@ -39,12 +61,17 @@ TURN_BIAS = 0.0
 class Body:
     def __init__(self, brain: Brain, ports: dict[str, list[int]], drives: Drives | None = None,
                  seed: int = 0, v_max: float = V_MAX):
-        self.brain, self.ports = brain, ports
+        # Indices como arrays, uma vez. A porta SENSORY tem 17.550 entradas e
+        # e' injetada a cada passo: com lista Python o numpy reconverteria tudo
+        # a cada chamada, o que sozinho custava mais que a rede.
+        self.brain = brain
+        self.ports = {k: np.asarray(v, dtype=np.int32) for k, v in ports.items()}
         self.v_max = v_max
         self.drives = drives or Drives()
         self.inject = np.zeros(brain.n, dtype=np.float32)
         self.rng = np.random.default_rng(seed)
         self._escape: str | None = None
+        self.drive = 0.0        # ultima taxa da populacao descendente, em Hz
 
     def sense(self, *, flow_left: float = 0.0, flow_right: float = 0.0,
               looming_left: float = 0.0, looming_right: float = 0.0, odor: float = 0.0,
@@ -53,6 +80,14 @@ class Body:
         """Injeta nas portas. Valores em mV (limiar do neuronio = 7 mV)."""
         self.inject[:] = 0.0
         d = self.drives
+
+        # ESTADOS INTERNOS -> NUCLEOS AMINERGICOS.
+        # Aqui morava `DNp09 <- 11 mV * drive_forward()`: um comando de andar
+        # disfarcado de estado interno, que injetava direto no descendente de
+        # caminhada. Agora os estados so' alcancam neuronios moduladores, e o
+        # avanco tem de atravessar a rede inteira para existir.
+        for port, mv in d.modulation().items():
+            self._put(port, mv)
 
         # DESTRAVAR. A mosca tem marcha re' propria: o MDN (moonwalker), que
         # ativa a caminhada para tras E inibe a de frente. E' literalmente o
@@ -76,9 +111,8 @@ class Body:
 
         # APROXIMAR. H2 vira para o lado CONTRARIO ao estimulo (e' via de
         # desvio), entao para ir na direcao de alguem injeta-se do lado oposto.
-        gate = d.social * d.awake
-        self._put("H2_R", target_left * 45.0 * gate)
-        self._put("H2_L", target_right * 45.0 * gate)
+        self._put("H2_R", target_left * 45.0 * d.social)
+        self._put("H2_L", target_right * 45.0 * d.social)
 
         # RUMO. PFL3 e' a saida de steering do complexo central: compara o bump
         # dos EPG (direcao atual) com o objetivo e desequilibra os descendentes
@@ -87,9 +121,10 @@ class Body:
         # o steering e' reflexo puro e o bicho oscila na frente da parede.
         # Os dois lados sempre acima do limiar (7 mV); o comando esta' na
         # diferenca. Alinhado = 18/18 e nao vira; erro maximo = 26/10.
+        # Sem gate de sono: quem cala o steering agora e' o dFB, dentro da rede.
         if goal_left or goal_right:
-            self._put("PFL3_L", (10.0 + 16.0 * goal_left) * d.awake)
-            self._put("PFL3_R", (10.0 + 16.0 * goal_right) * d.awake)
+            self._put("PFL3_L", 10.0 + 16.0 * goal_left)
+            self._put("PFL3_R", 10.0 + 16.0 * goal_right)
 
         # DESVIO: H2 e' a celula tangencial da placa lobular que projeta
         # CONTRALATERAL. Fluxo optico a esquerda -> descendentes direitos ->
@@ -107,38 +142,34 @@ class Body:
 
         # Porta olfativa: o beacon da base entra como "cheiro de comida" e a fome
         # e' que abre o canal. Falta resolver os ORNs -- por ora entra pela LC11.
-        self._put("LC11", odor * 10.0 * self.drives.drive_odor())
-
-        # Vies de exploracao. Isto NAO esta' no conectoma: representa a entrada
-        # neuromoduladora/central que faz a mosca andar sem estimulo externo.
-        # DNp09 e' o descendente "broadcaster" de caminhada para frente.
-        self._put("DNp09", 11.0 * self.drives.drive_forward())
+        self._put("LC11", odor * 10.0 * self.drives.hunger)
 
     def _put(self, port: str, value: float):
-        if value and (idx := self.ports.get(port)):
+        idx = self.ports.get(port)
+        if value and idx is not None and len(idx):
             self.inject[idx] += value
 
     def act(self, ms: float = 10.0, noise: float = 0.02) -> tuple[float, float]:
         """Roda `ms` de tempo biologico e le' os descendentes. Devolve (v_esq, v_dir)."""
-        self.brain.run(ms, inject=self.inject, gain=self.drives.gain, noise=noise)
-        r = lambda k: self.brain.pop_rate(self.ports.get(k, []))
+        self.brain.run(ms, inject=self.inject, noise=noise)
+        r = lambda k: self.brain.pop_rate(self.ports.get(k, [])) * 1000.0   # Hz
 
         # Steering pela populacao descendente inteira, nao pelo par DNa02:
         # DNa02 tem UM neuronio por lado e o leitor fica binario e instavel.
         dl, dr = r("DN_L"), r("DN_R")
-        # Steering tambem e' comportamento: bicho dormindo nao vira. O alerta
-        # segura um piso, senao um sobressalto nao conseguiria desviar.
-        steer_gate = max(self.drives.awake, self.drives.arousal, self.drives.frustration)
-        # Cruzeiro faz ARCO (continua avancando enquanto vira); frustrado
-        # pivota, que e' o que tira de beco. Um ganho so' nao serve para os dois.
-        agility = 1.0 + 3.0 * self.drives.frustration
-        assim = (dr - dl) / max(dr + dl, 1e-9) - TURN_BIAS
+        self.drive = total = dl + dr
 
-        # AVANCO vem do estado interno, nao do conectoma: no ponto de operacao
-        # calibrado a populacao descendente fica em 0-1 Hz, insuficiente para
-        # dirigir velocidade. DNp09 tambem nao dispara (inibicao da rede).
-        # O steering acima E' do conectoma; isto aqui e' o vies central.
-        forward = CRUISE_FRAC * self.v_max * self.drives.drive_forward()
+        # AVANCO = modo comum da populacao descendente, retificado pelo piso de
+        # recrutamento do VNC. Uma leitura, nao um comando: `total` e' taxa de
+        # disparo medida na rede. Rede quieta, robo parado -- e nenhum estado
+        # interno consegue contornar isso.
+        forward = K_V * max(0.0, total - VNC_RECRUIT)
+
+        # Rede quieta: a razao (dr-dl)/(dr+dl) explode em ruido quando o
+        # denominador vai a zero. Sem atividade descendente nao ha' comando
+        # nenhum, nem de avanco nem de curva.
+        assim = (dr - dl) / total - TURN_BIAS if total > DRIVE_FLOOR else 0.0
+
         reverse = K_REVERSE * r("MDN")
         v = float(np.clip(forward - reverse, -self.v_max, self.v_max))
 
@@ -146,7 +177,9 @@ class Body:
         # vira arco quando rapido e piao quando devagar -- e o bicho passa a
         # girar mais do que anda toda vez que um drive baixa o avanco.
         # PIVOT deixa um resto de giro com o robo parado, para destravar.
-        turn = K_ANGULAR * agility * steer_gate * assim * (abs(v) + PIVOT * self.v_max)
+        # Cruzeiro faz ARCO; frustrado pivota, que e' o que tira de beco.
+        agility = 1.0 + 3.0 * self.drives.frustration
+        turn = K_ANGULAR * agility * assim * (abs(v) + PIVOT * self.v_max)
 
         # Steering e' IPSILATERAL: descendentes mais ativos de um lado fazem a
         # mosca virar para AQUELE lado (DNa02 direito -> curva a direita).
@@ -154,6 +187,10 @@ class Body:
         # esquerda -> H2_L -> descendentes direitos -> vira a direita, desvia.
         vm = self.v_max
         return float(np.clip(v + turn, -vm, vm)), float(np.clip(v - turn, -vm, vm))
+
+    def walking(self) -> bool:
+        """Descritivo, para o log. Nada no controle depende disto."""
+        return self.drive > DRIVE_WALK
 
     def rates(self) -> dict[str, float]:
         keys = ("DN_L", "DN_R", "DNa02_L", "DNa02_R", "MDN")

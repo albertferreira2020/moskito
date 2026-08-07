@@ -41,7 +41,7 @@ def normalize(w: csr_matrix) -> csr_matrix:
 
 
 if __name__ == "__main__":
-    w, root_ids, ports = load()
+    w, mod, root_ids, ports = load()
     meta = side_index()
     pos = pd.Series(np.arange(len(root_ids)), index=root_ids)
     wn = normalize(w)

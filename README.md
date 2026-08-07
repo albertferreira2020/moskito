@@ -59,6 +59,9 @@ bash scripts/fetch_data.sh     # ~55 MB do espelho público do Codex
   seja, obstaculo a esquerda faz virar para a direita.
 - Ciclo circadiano + pressao de sono produzem o padrao certo: ativo ao
   amanhecer e ao entardecer, quase parado de madrugada.
+- Webots: apartamento simulado, corpo cogumelar dando novidade de lugar a
+  partir da camera, complexo central dando rumo, frustracao -> MDN (marcha re),
+  escalada de fuga e busca por pessoa.
 
 **A descoberta que destravou o passo 4.** `scripts/trace.py` mede, por
 propagacao linear no grafo, a influencia de cada porta sensorial sobre os
@@ -83,26 +86,43 @@ inibicao gigantes se cancelam e a injecao sensorial e' irrelevante. Calibrar
 pela taxa media engana. O alvo certo e' a **lateralizacao**. Em `W_SYN = 0.18`
 a resposta e' limpa e espelhada.
 
+**O avanço deixou de ser comando (0.3.0).** Antes o robô andava porque o
+software mandava: `V_CRUISE * drive_forward()`, mais 11 mV injetados direto no
+`DNp09`. Agora a velocidade é uma **leitura** da mesma população descendente
+que já dava o steering — a soma é o avanço, a diferença é a curva:
+
+```
+forward = K_V * max(0, (DN_L + DN_R) - VNC_RECRUIT)
+turn    = f((DN_R - DN_L) / (DN_R + DN_L))
+```
+
+Nenhum estado interno toca motor. Eles injetam corrente em núcleos que existem
+no FlyWire — s-LNv, LNd, OA-VUM/VPM, PAM, PPL1, ER5+dFB — e a excitação tem de
+atravessar 139.255 neurônios para virar movimento. O que faltava era a
+aferência tônica: com os 17.550 mecanossensoriais ativos, o `DNp09` passa a
+disparar a **19,45 Hz**, contra "não dispara nem com injeção acima do limiar".
+Ver [CHANGELOG.md](CHANGELOG.md).
+
 **Nao funciona ainda:**
 
-- **O avanco nao vem do conectoma.** No ponto de operacao calibrado a populacao
-  descendente fica em 0-1 Hz, insuficiente para dirigir velocidade, e `DNp09`
-  nao dispara nem com injecao direta acima do limiar (inibicao da rede). Hoje o
-  avanco e' `V_CRUISE * drive_forward()`, ou seja, estado interno. O steering,
-  esse sim, e' do conectoma.
-- Trade-off nao resolvido: `W_SYN` alto da' rede ativa mas sem lateralizacao;
-  baixo da' lateralizacao limpa mas rede quase muda. Provavel causa: falta o
-  drive sensorial distribuido que a mosca real tem (~17k sensoriais + 78k
-  opticos ativos o tempo todo), entao a rede so' tem 1-3 neuronios injetados.
+- **O ponto de operação do avanço não convergiu.** A arquitetura está no lugar,
+  a calibração não. Em traço de 40 s os estados internos não diferenciam:
+  explorando 1,52 Hz, lugar conhecido 1,48 Hz, dormindo 1,36 Hz — mosca
+  dormindo anda a 6,3 cm/s. São quatro parâmetros acoplados (`W_SYN`, `TONIC`,
+  `B_SLOW`, `K_MOD`) e falta a busca nesse espaço.
+- **A rede latcha sem adaptação lenta.** Descoberto ao rodar 20 s: nenhum
+  script do projeto passava de 1 s, e o `W_SYN = 0,18` foi calibrado com
+  350 ms. Um pulso de octopamina leva os descendentes a ~2,3 Hz e eles ficam lá
+  depois que o pulso acaba.
 - Sem porta olfativa de verdade: o "cheiro" da base entra pelas LC11. Falta
   resolver os ORNs do lobo antenal.
-- Sem complexo central (heading) nem corpo cogumelar (familiaridade). `novelty`
-  ainda e' um seno sintetico no demo.
-- Sem Webots. O `Body` ja' devolve `(v_esq, v_dir)` para plugar direto.
+- `Compass` modela o *resultado* do anel EPG/PEN, não a dinâmica de spikes.
+  EPG/PEN/Delta7 estão no conectoma (47/24/42) e a classe pode ser trocada.
 
 **Parametros de calibracao** (nada disso vem dos CSVs -- o conectoma da
-anatomia, nao fisiologia): `W_SYN`, `V_TH`, `TAU_M`, `TAU_SYN`, `B_ADAPT` em
-`brain.py`; `V_CRUISE`, `K_ANGULAR` em `body.py`.
+anatomia, nao fisiologia): `W_SYN`, `V_TH`, `TAU_M`, `TAU_SYN`, `B_ADAPT`,
+`B_SLOW`, `K_MOD` em `brain.py`; `K_V`, `VNC_RECRUIT`, `K_ANGULAR` em
+`body.py`; `TONIC` e os `M_*` em `drives.py`.
 
 ## Tempo comprimido
 
