@@ -10,6 +10,7 @@ aparecem deslocados. Regenerar e' mais confiavel que remendar:
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -51,6 +52,12 @@ Pedestrian {
 '''
 
 if __name__ == "__main__":
+    # Com o Webots aberto nao adianta: ele mantem o estado da interface em
+    # memoria e regrava o .wbproj ao recarregar ou sair, desfazendo a limpeza.
+    if subprocess.run(["pgrep", "-f", "Webots.app/Contents/MacOS/webots"],
+                      capture_output=True).returncode == 0:
+        sys.exit("feche o Webots antes -- ele regrava o .wbproj ao sair")
+
     if not SRC.exists():
         sys.exit(f"nao achei o apartamento original em {SRC}")
 
