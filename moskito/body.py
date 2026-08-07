@@ -111,8 +111,14 @@ class Body:
 
         # APROXIMAR. H2 vira para o lado CONTRARIO ao estimulo (e' via de
         # desvio), entao para ir na direcao de alguem injeta-se do lado oposto.
-        self._put("H2_R", target_left * 45.0 * d.social)
-        self._put("H2_L", target_right * 45.0 * d.social)
+        # Piso de 0,3: multiplicar direto por `social` deixava a injecao ABAIXO
+        # do limiar de 7 mV durante quase toda a sessao (medido: 5,4 mV com
+        # social=0,2, 3,3 mV com social=0,62), ou seja, a via de aproximacao
+        # existia no papel e nunca disparava. A vontade social pesa o quanto
+        # aproxima; ela nao decide se o bicho reage ao que ve'.
+        gate = 45.0 * (0.3 + 0.7 * d.social)
+        self._put("H2_R", target_left * gate)
+        self._put("H2_L", target_right * gate)
 
         # RUMO. PFL3 e' a saida de steering do complexo central: compara o bump
         # dos EPG (direcao atual) com o objetivo e desequilibra os descendentes

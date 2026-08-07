@@ -47,6 +47,7 @@ WHEEL_R = 0.0205       # m
 AXLE = 0.052           # m, distancia entre rodas do e-puck
 CAM_FOV = 0.84         # rad, campo de visao horizontal
 MET_DIST = 0.30        # fracao da imagem ocupada que conta como "encontrou"
+K_FIXA = 0.14          # forca maxima da fixacao visual, POR PASSO de controle
 
 
 def find_target(image: bytes, w: int, h: int) -> tuple[float, float, float, float | None]:
@@ -159,9 +160,14 @@ def main() -> None:
         # ainda vale. Objetivo so' muda quando ha' motivo -- e' o que impede o
         # bicho de ficar oscilando na frente da parede.
         cx.update((vr - vl) / AXLE, dt / 1000.0)
+        # Saliencia = quanto o alvo ocupa do campo, saturando em MET_DIST. A
+        # DIRECAO e' confiavel mesmo com o alvo pequeno e longe; o que o tamanho
+        # informa e' urgencia, nao onde ele esta'. Por isso o peso combina os
+        # dois: um vulto distante desvia o rumo de leve, um perto trava nele.
+        saliencia = min(1.0, tgt_size / MET_DIST)
+        peso = K_FIXA * saliencia * (0.3 + 0.7 * body.drives.social)
         cx.decide(novelty=novelty, frustration=body.drives.frustration,
-                  target_bearing=bearing if body.drives.social > 0.2 else None,
-                  frozen=frozen)
+                  target_bearing=bearing, target_weight=peso, frozen=frozen)
         # positivo = obstaculo a direita = vira para a esquerda
         goal_l, goal_r = cx.steer(avoid=flow_r - flow_l)
         recuando = cx.reversing > 0.0

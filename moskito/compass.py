@@ -122,8 +122,24 @@ class Compass:
         self.escaping = REVERSE_S
         self.tries = 0
 
+    def fixate(self, bearing: float, peso: float) -> None:
+        """Fixacao visual: PUXA o objetivo na direcao do que se ve'.
+
+        Nao substitui o objetivo. Fixacao de objeto na mosca desloca a fase do
+        anel do complexo central, nao a reescreve -- e' por isso que ela
+        aproxima em arco em vez de girar no lugar a cada quadro. Substituir
+        tambem apagaria a menotaxia: qualquer borrao vermelho no canto viraria
+        destino, e o deslocamento em linha reta acabava.
+
+        `peso` e' POR PASSO DE CONTROLE (~16 ms), entao valores pequenos ja'
+        convergem rapido: 0,01 leva o objetivo a meio caminho em ~1 s.
+        """
+        self.goal = wrap(self.goal + peso * wrap(self.heading + bearing - self.goal))
+        self.held = 0.0
+
     def decide(self, *, novelty: float, frustration: float,
-               target_bearing: float | None = None, frozen: bool = False) -> None:
+               target_bearing: float | None = None, target_weight: float = 0.0,
+               frozen: bool = False) -> None:
         """Muda de rumo so' quando ha' motivo. O resto do tempo, segura."""
         if frustration < 0.2:
             self.tries = 0                      # saiu: zera a escalada
@@ -142,9 +158,14 @@ class Compass:
             # canto e' exatamente o que trava.
             self.turn_back()
             return
-        if target_bearing is not None:          # viu alguem: persegue, sempre
-            self.goal = wrap(self.heading + target_bearing)
-            self.held = 0.0
+        if target_bearing is not None and target_weight > 0.0:
+            # Viu algo: orienta SEMPRE, com forca proporcional a saliencia.
+            # O portao antigo era `social > 0.2`, e a vontade social leva ~100 s
+            # de parede para chegar la': medido em corrida real, um alvo visto
+            # aos 6 s foi ignorado por completo, e a visao so' passou a alinhar
+            # o rumo no ultimo terco da sessao. Fixacao visual e' reflexa na
+            # mosca; o estado interno pesa o quanto ela APROXIMA, nao se ela ve'.
+            self.fixate(target_bearing, target_weight)
             return
         if self.held < HOLD_MIN:                # compromisso minimo com o rumo
             return
