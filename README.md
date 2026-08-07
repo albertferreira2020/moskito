@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/capa-readme-git.png" alt="moskito cover" />
+</p>
+
 # moskito
 
 Um robô autônomo cujo cérebro é o conectoma real da mosca (FlyWire FAFB v783),
