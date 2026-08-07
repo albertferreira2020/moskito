@@ -79,16 +79,32 @@ class Compass:
             float(self.rng.uniform(-np.pi, np.pi))
         self.held = 0.0
 
+    def turn_back(self) -> None:
+        """Meia-volta com dispersao. E' o que a mosca faz em fundo de beco.
+
+        Rumo NOVO ao acaso nao serve: num canto, metade dos angulos ainda
+        aponta para a parede. Virar de costas para onde se estava indo sai
+        sempre, e o espalhamento evita repetir a mesma trajetoria.
+        """
+        self.goal = wrap(self.heading + np.pi + self.rng.uniform(-0.7, 0.7))
+        self.held = 0.0
+
     def decide(self, *, novelty: float, frustration: float,
                target_bearing: float | None = None) -> None:
         """Muda de rumo so' quando ha' motivo. O resto do tempo, segura."""
+        if frustration > 0.5:
+            # Empacado NAO espera o compromisso minimo: 8 s empurrando canto e'
+            # exatamente o que trava o bicho. E so' vira uma vez por episodio.
+            if self.held > 1.0:
+                self.turn_back()
+            return
         if target_bearing is not None:          # viu alguem: persegue, sempre
             self.goal = wrap(self.heading + target_bearing)
             self.held = 0.0
             return
         if self.held < HOLD_MIN:                # compromisso minimo com o rumo
             return
-        if frustration > 0.5 or novelty < BORED:
+        if novelty < BORED:
             self.retarget()
 
     @property

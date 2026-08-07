@@ -103,8 +103,10 @@ def main() -> None:
         loom_r = 1.0 if v[0] > PS_LOOM else 0.0
         loom_l = 1.0 if v[7] > PS_LOOM else 0.0
 
-        # Preso: encostado na frente por varios passos seguidos.
-        stuck_for = stuck_for + 1 if max(v[0], v[7]) > PS_STUCK else 0
+        # Preso: encostado em QUALQUER sensor, nao so' na frente. Encunhado
+        # entre parede e poltrona o contato e' lateral, e olhando so' ps0/ps7
+        # o bicho nunca percebia que estava travado.
+        stuck_for = stuck_for + 1 if v.max() > PS_STUCK else 0
         stuck = stuck_for > 8
 
         novelty, tgt_l, tgt_r, tgt_size, bearing = body.drives.novelty, 0.0, 0.0, 0.0, None
