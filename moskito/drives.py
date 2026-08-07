@@ -24,7 +24,7 @@ TIME_SCALE = 24 * 60 / DAY_MINUTES  # 72x: 1 s de parede = 72 s de mosca
 # Correntes (mV) para as portas moduladoras. Sao ganhos de calibracao, como o
 # W_SYN -- calibrados pela FAIXA DE AVANCO que produzem (scripts/calibrate.py),
 # nao por plausibilidade da taxa media. Nenhum deles e' velocidade.
-TONIC = 9.0      # aferencia mecanossensorial de fundo, CONSTANTE
+TONIC = 8.0      # aferencia mecanossensorial de fundo, CONSTANTE
 M_CLOCK = 34.0   # relogio -> s-LNv / LNd / DN1p
 M_OCT = 60.0     # octopamina -> OA-VUM/VPM
 M_DA = 40.0      # dopamina de recompensa -> PAM

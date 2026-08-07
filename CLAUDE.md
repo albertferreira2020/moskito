@@ -58,7 +58,7 @@ flowchart TD
         MDN["MDN · marcha ré"]
     end
 
-    TON["aferência tônica CONSTANTE<br/>17.550 mecanossensoriais · 9 mV<br/>NÃO é comando de andar"]
+    TON["aferência tônica CONSTANTE<br/>17.550 mecanossensoriais · 8 mV<br/>NÃO é comando de andar"]
 
     subgraph rede["brain.py · 139.255 neurônios"]
         FAST["matriz RÁPIDA · 2,66M sinapses<br/>ionotrópica · ms · ACH/GABA/GLUT"]
@@ -129,7 +129,8 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
 
 | Medida | Valor |
 |---|---|
-| `W_SYN` calibrado | 0,18 |
+| `W_SYN` calibrado | 0,18 (confirmado pela busca) |
+| Ponto de operação | `TONIC`=8, `B_SLOW`=0,005, `K_MOD`=1,3 |
 | Assimetria DN: PFL3 20 mV | ±0,85 |
 | Assimetria DN: H2 40 mV | ±0,23 (satura) |
 | Custo do LIF | 15,7 ms de parede por 5 ms biológicos (M1 Max) |
@@ -144,6 +145,11 @@ Ser honesto sobre isso no código e nas mensagens. Não inflar.
 | DN soma vs tônico mecanossensorial | 8 mV → 0,47 Hz; 11 mV → 1,17 Hz |
 | Lateralização PFL3 com rede acordada | faixa 0,62–0,84 (sobrevive) |
 | Latch sem adaptação lenta | 2,3 Hz mantidos 10 s após remover OCT |
+| Avanço: recém-acordado / explorando | 11,2 / 14,0 cm/s |
+| Avanço: saciado, exausto, dormindo | 0,0 cm/s (parado) |
+| Sobressalto acorda a mosca | 8,9 cm/s a partir de sono=1,0 |
+| Lateralização no ponto final | 0,615–0,790 |
+| Sem modulação | 0,000 Hz em 1 s, 2 s e 4 s |
 
 ---
 
@@ -268,6 +274,10 @@ O que funciona melhor neste projeto, na ordem:
 Funciona: steering pelo conectoma, ciclo circadiano, corpo cogumelar,
 frustração → MDN, escalada de fuga (meia-volta → ré reta), busca por pessoa.
 
+A locomoção emergente **fechou**: o avanço sai da população descendente, os
+estados internos separam comportamento (11,2 cm/s acordado, 0,0 dormindo), não
+há latch e a lateralização sobrevive. Ponto achado por `scripts/search.py`.
+
 A hipótese antiga ("falta drive sensorial distribuído") **estava certa** e foi
 confirmada: com aferência tônica nos 17.550 mecanossensoriais o `DNp09` dispara
 a 19,45 Hz e a população descendente responde de forma graduada. A arquitetura
@@ -276,25 +286,11 @@ excitabilidade, leitura soma/diferença).
 
 Aberto, em ordem de valor:
 
-1. **O ponto de operação do avanço NÃO convergiu.** A arquitetura está no
-   lugar, a calibração não. Medido com traço de 40 s:
-
-   | estado interno | DN soma | v média |
-   |---|---|---|
-   | explorando | 1,521 Hz | 7,76 cm/s |
-   | lugar velho | 1,477 Hz | 7,43 cm/s |
-   | dormindo | 1,361 Hz | 6,29 cm/s |
-
-   Os estados **não diferenciam** — mosca dormindo anda a 6,3 cm/s. São quatro
-   parâmetros acoplados (`W_SYN`, `TONIC`, `B_SLOW`, `K_MOD`) e três regimes,
-   nenhum deles certo: sem `B_SLOW` a rede latcha (armadilha 4); com
-   `B_SLOW = 0,15` morre (0,08 Hz); em 0,02 fica monoestável mas surda ao
-   estado. Falta a busca no espaço desses quatro, com objetivo explícito:
-   separação entre estados **e** ausência de latch em 20 s **e** lateralização
-   preservada. Cada avaliação custa ~40 s de parede.
+1. **Trocar o `Compass` pela rede EPG/PEN/Delta7 real.**
 2. **Porta olfativa de verdade.** O "cheiro" da base entra pelas LC11; falta
    resolver os ORNs do lobo antenal.
-3. **Trocar o `Compass` pela rede EPG/PEN/Delta7 real.**
+3. **Validar no Webots.** A calibração é do cérebro isolado; falta o robô no
+   apartamento com o laço sensorial fechado.
 4. **Escala:** o e-puck tem 7 cm num apartamento real e encunha em vãos que um
    robô doméstico nem notaria. Decisão consciente de manter, não descuido.
 

@@ -188,7 +188,11 @@ if __name__ == "__main__":
 
     r2 = []
     if vivos:
-        alvo = [(r["w_syn"], r["tonic"], r["b_slow"], r["k_mod"]) for r in vivos[:16]]
+        # TODOS os sobreviventes, nao os N com maior separacao. Ordenar por
+        # separacao enviesa para `hi` alto, e `hi` alto e' justamente o que
+        # latcha: na primeira rodada isso descartou em silencio o grupo
+        # w_syn=0,14 com b_slow alto, que era o unico candidato plausivel.
+        alvo = [(r["w_syn"], r["tonic"], r["b_slow"], r["k_mod"]) for r in vivos[:36]]
         print(f"\n=== etapa 2: {len(alvo)} sobreviventes (latch + lateralizacao) ===",
               flush=True)
         r2 = roda(etapa2, alvo, min(a.jobs, len(alvo)),

@@ -79,27 +79,41 @@ robô fica parado e não há como contornar isso pelo software.
 - `ports.json` não guarda mais os 103 mil índices de SENSORY/OPTIC; `load()`
   os deriva do `super_class`.
 
-### Não converge ainda
+### Ponto de operação (convergido por `scripts/search.py`)
 
-A arquitetura está implementada; o **ponto de operação não está calibrado**.
-Medido com traço de 40 s:
+`W_SYN`=0,18 · `TONIC`=8 · `B_SLOW`=0,005 · `K_MOD`=1,3
 
-| estado interno | DN soma | v média |
+A busca varre quatro parâmetros acoplados com objetivo de quatro termos —
+separação entre estados, parada de verdade, ausência de latch em 20 s e
+lateralização preservada. Dos 96 pontos, 32 passam na separação e **3** passam
+nos quatro. O vencedor mantém o `W_SYN` historicamente calibrado e dá a melhor
+lateralização das 48 medições.
+
+Comportamento resultante, de `scripts/calibrate.py`:
+
+| estado interno | DN soma | v |
 |---|---|---|
-| explorando | 1,521 Hz | 7,76 cm/s |
-| lugar velho | 1,477 Hz | 7,43 cm/s |
-| dormindo | 1,361 Hz | 6,29 cm/s |
+| explorando (lugar novo, com fome) | 2,113 Hz | 14,0 cm/s |
+| recém-acordado | 1,840 Hz | 11,2 cm/s |
+| sobressaltado (dormindo + tapa) | 1,609 Hz | 8,9 cm/s |
+| lugar conhecido (habituado) | 1,507 Hz | 7,8 cm/s |
+| saciado / tédio | 0,463 Hz | **parado** |
+| exausto | 0,433 Hz | **parado** |
+| dormindo | 0,433 Hz | **parado** |
 
-Os estados não diferenciam — mosca dormindo anda a 6,3 cm/s. São quatro
-parâmetros acoplados (`W_SYN`, `TONIC`, `B_SLOW`, `K_MOD`) e três regimes,
-nenhum certo: sem `B_SLOW` a rede latcha; em 0,15 ela morre (0,08 Hz); em 0,02
-fica monoestável mas surda ao estado. Falta a busca nesse espaço, com objetivo
-explícito — separação entre estados **e** ausência de latch em 20 s **e**
-lateralização preservada. Cada avaliação custa ~40 s de parede.
+Os 11,2 cm/s do recém-acordado batem com o cruzeiro medido antes de qualquer
+disto existir. Sem latch: 0,000 Hz a 1 s, 2 s e 4 s depois de tirar a
+modulação. Lateralização do PFL3: faixa 0,615–0,790.
 
-O que **está** medido e funcionando: a lateralização do PFL3 sobrevive com a
-rede acordada (faixa 0,62–0,84), a resposta descendente ao tônico é graduada
-(8 mV → 0,47 Hz; 11 mV → 1,17 Hz), e o pipeline roda ponta a ponta.
+Duas coisas que a busca ensinou, e que estao registradas no CLAUDE.md:
+
+- **A busca apontou para fora dos próprios parâmetros.** Na primeira rodada a
+  separação deu 0,003–0,33 Hz em todos os pontos, o que significava que
+  nenhuma calibração resolveria. Era defeito no mapeamento estado → núcleo:
+  mosca dormindo recebia 36,6 mV de octopamina.
+- **Ordenar sobreviventes por separação enviesa.** Separação alta correlaciona
+  com `hi` alto, e `hi` alto é justamente o que latcha; a primeira seleção
+  descartou em silêncio o único grupo plausível. A etapa 2 agora testa todos.
 
 ### Compatibilidade
 

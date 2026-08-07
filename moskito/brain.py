@@ -43,7 +43,7 @@ B_ADAPT = 1.6     # mV acumulados por spike -- impede a rede de latchar
 # Com ela o estado alto se auto-termina, e a marcha vira SURTO -- que e' como a
 # mosca de fato anda, em episodios, e nao num regime continuo.
 TAU_SLOW = 4000.0 # ms
-B_SLOW = 0.02     # mV por spike -- calibrado pela auto-terminacao do surto
+B_SLOW = 0.005    # mV por spike -- calibrado por scripts/search.py
 V_TH = 7.0        # mV acima do repouso
 T_REF = 2.2       # ms, periodo refratario
 W_SYN = 0.18      # mV por sinapse -- o parametro mais sensivel do modelo.

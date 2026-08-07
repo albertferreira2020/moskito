@@ -103,17 +103,27 @@ aferência tônica: com os 17.550 mecanossensoriais ativos, o `DNp09` passa a
 disparar a **19,45 Hz**, contra "não dispara nem com injeção acima do limiar".
 Ver [CHANGELOG.md](CHANGELOG.md).
 
+E os estados internos separam comportamento de verdade, medido em
+`scripts/calibrate.py`:
+
+| estado interno | v (cm/s) |
+|---|---|
+| explorando (lugar novo, com fome) | 14,0 |
+| recém-acordado | 11,2 |
+| lugar conhecido (habituado) | 7,8 |
+| sobressaltado (dormindo + tapa) | 8,9 |
+| saciado / exausto / dormindo | **0,0 — parado** |
+
+Sem latch (0,000 Hz quatro segundos depois de tirar a modulação) e com a
+lateralização do PFL3 preservada (faixa 0,615–0,790). O ponto de operação
+(`TONIC`=8, `B_SLOW`=0,005, `K_MOD`=1,3, `W_SYN`=0,18) saiu de
+`scripts/search.py`, que busca em quatro parâmetros acoplados com objetivo de
+quatro termos — separação, parada, ausência de latch e lateralização.
+
 **Nao funciona ainda:**
 
-- **O ponto de operação do avanço não convergiu.** A arquitetura está no lugar,
-  a calibração não. Em traço de 40 s os estados internos não diferenciam:
-  explorando 1,52 Hz, lugar conhecido 1,48 Hz, dormindo 1,36 Hz — mosca
-  dormindo anda a 6,3 cm/s. São quatro parâmetros acoplados (`W_SYN`, `TONIC`,
-  `B_SLOW`, `K_MOD`) e falta a busca nesse espaço.
-- **A rede latcha sem adaptação lenta.** Descoberto ao rodar 20 s: nenhum
-  script do projeto passava de 1 s, e o `W_SYN = 0,18` foi calibrado com
-  350 ms. Um pulso de octopamina leva os descendentes a ~2,3 Hz e eles ficam lá
-  depois que o pulso acaba.
+- **A calibração é do cérebro isolado.** Falta rodar no Webots com o laço
+  sensorial fechado — o robô mexendo muda o que ele vê, e isso realimenta.
 - Sem porta olfativa de verdade: o "cheiro" da base entra pelas LC11. Falta
   resolver os ORNs do lobo antenal.
 - `Compass` modela o *resultado* do anel EPG/PEN, não a dinâmica de spikes.

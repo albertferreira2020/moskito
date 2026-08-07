@@ -38,7 +38,7 @@ from .drives import DRIVE_WALK, Drives
 # V_MAX e' o teto FISICO do e-puck v2: 7.536 rad/s * 0.0205 m de roda. Mandar
 # mais que isso nao acelera nada, so' satura -- e saturado o robo pivota em vez
 # de fazer curva, porque uma roda vai ao maximo e a outra ao minimo.
-K_V = 0.095               # m/s por Hz recrutado -- a escala de leitura
+K_V = 0.103               # m/s por Hz recrutado -- a escala de leitura
 # O FAFB e' um conectoma de CEREBRO. O gerador de padrao da marcha nao esta'
 # nele: fica no cordao nervoso ventral, que nao foi reconstruido aqui. O VNC
 # nao repassa qualquer atividade descendente -- ele RECRUTA, e so' passa a
@@ -47,7 +47,7 @@ K_V = 0.095               # m/s por Hz recrutado -- a escala de leitura
 # robo nunca ficaria parado de verdade.
 # Nao e' um `if anda`: e' uma retificacao continua. Logo acima do piso o passo
 # e' lento; nada muda de modo, nao ha' decisao binaria em lugar nenhum.
-VNC_RECRUIT = 0.80        # Hz de populacao descendente para recrutar marcha
+VNC_RECRUIT = 0.75        # Hz de populacao descendente para recrutar marcha
 K_ANGULAR = 0.45          # curvatura: multiplica velocidade, nao e' velocidade
 PIVOT = 0.25              # quanto de giro sobra com o robo parado (para destravar)
 K_REVERSE = 0.004         # m/s por Hz de MDN
