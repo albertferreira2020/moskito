@@ -123,11 +123,12 @@ def main() -> None:
         cx.decide(novelty=novelty, frustration=body.drives.frustration,
                   target_bearing=bearing if body.drives.social > 0.2 else None)
         goal_l, goal_r = cx.steer()
+        recuando = cx.reversing > 0.0
 
         body.sense(flow_left=flow_l, flow_right=flow_r,
                    looming_left=loom_l, looming_right=loom_r,
                    odor=body.drives.hunger, target_left=tgt_l, target_right=tgt_r,
-                   goal_left=goal_l, goal_right=goal_r)
+                   goal_left=goal_l, goal_right=goal_r, reversing=recuando)
         vl, vr = body.act(BRAIN_MS)
 
         speed = abs(vl + vr) / 2
@@ -146,7 +147,7 @@ def main() -> None:
             seen = f" ALGUEM({tgt_size:.2f})" if tgt_size > 0.01 else ""
             print(f"{body.drives}  DN={r['DN_L']:5.2f}/{r['DN_R']:5.2f}  "
                   f"prox E/D={flow_l:.2f}/{flow_r:.2f} psmax={v.max():.0f}"
-                  f"{'  PRESO' if stuck else ''}"
+                  f"{'  RE-RETA' if recuando else '  PRESO' if stuck else ''}"
                   f"  v={vl:+.3f}/{vr:+.3f}  mapa={mb.learned:.1%}  {cx}{seen}"
                   if mb else f"{body.drives}  v={vl:+.3f}/{vr:+.3f}", flush=True)
 

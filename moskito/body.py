@@ -49,7 +49,7 @@ class Body:
     def sense(self, *, flow_left: float = 0.0, flow_right: float = 0.0,
               looming_left: float = 0.0, looming_right: float = 0.0, odor: float = 0.0,
               target_left: float = 0.0, target_right: float = 0.0,
-              goal_left: float = 0.0, goal_right: float = 0.0):
+              goal_left: float = 0.0, goal_right: float = 0.0, reversing: bool = False):
         """Injeta nas portas. Valores em mV (limiar do neuronio = 7 mV)."""
         self.inject[:] = 0.0
         d = self.drives
@@ -57,6 +57,12 @@ class Body:
         # DESTRAVAR. A mosca tem marcha re' propria: o MDN (moonwalker), que
         # ativa a caminhada para tras E inibe a de frente. E' literalmente o
         # circuito de sair de beco. Frustracao aciona ele.
+        # Re' reta: MDN no talo e NENHUMA entrada lateral, senao as paredes dos
+        # dois lados injetam H2 e ele torce enquanto recua -- que e' o que
+        # entala de novo. Sair de fenda exige voltar pelo eixo de entrada.
+        if reversing:
+            self._put("MDN", 26.0)
+            return
         self._put("MDN", 14.0 * d.frustration)
 
         # Escolhe UM lado para escapar e se compromete com ele enquanto durar a

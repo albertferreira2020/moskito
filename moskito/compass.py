@@ -28,6 +28,8 @@ DRIFT = 0.004          # rad/s de deriva: integrador nenhum e' perfeito
 HOLD_MIN = 8.0         # s de simulacao segurando o mesmo rumo, no minimo
 BORED = 0.35           # abaixo disso o corpo cogumelar diz "ja' conheco"
 ESCAPE_MIN = 3.0       # s: fuga e' manobra comprometida, nao gatilho continuo
+TRIES = 2              # meias-voltas antes de escalar para re' em linha reta
+REVERSE_S = 4.0        # s de re' reta: so' isso tira de fenda estreita
 
 
 def wrap(a: float) -> float:
@@ -43,6 +45,8 @@ class Compass:
         self.goal = float(self.rng.uniform(-np.pi, np.pi))
         self.held = 0.0
         self.escaping = 0.0
+        self.reversing = 0.0
+        self.tries = 0
 
     # --- bussola ---
 
@@ -60,6 +64,7 @@ class Compass:
                           + self.rng.normal(0.0, DRIFT * np.sqrt(dt)))
         self.held += dt
         self.escaping = max(0.0, self.escaping - dt)
+        self.reversing = max(0.0, self.reversing - dt)
 
     @property
     def ring(self) -> np.ndarray:
@@ -88,7 +93,18 @@ class Compass:
         Rumo NOVO ao acaso nao serve: num canto, metade dos angulos ainda
         aponta para a parede. Virar de costas para onde se estava indo sai
         sempre, e o espalhamento evita repetir a mesma trajetoria.
+
+        Depois de TRIES tentativas sem sair, escala para re' RETA. Numa fenda
+        mais estreita que o raio de manobra, virar e' exatamente o que trava:
+        so' se sai voltando pelo eixo por onde se entrou. O MDN da mosca faz
+        caminhada para tras sustentada -- e' esse programa.
         """
+        self.tries += 1
+        if self.tries > TRIES:
+            self.reversing = REVERSE_S
+            self.escaping = REVERSE_S
+            self.tries = 0
+            return
         self.goal = wrap(self.heading + np.pi + self.rng.uniform(-0.7, 0.7))
         self.held = 0.0
         self.escaping = ESCAPE_MIN
@@ -96,6 +112,8 @@ class Compass:
     def decide(self, *, novelty: float, frustration: float,
                target_bearing: float | None = None) -> None:
         """Muda de rumo so' quando ha' motivo. O resto do tempo, segura."""
+        if frustration < 0.2:
+            self.tries = 0                      # saiu: zera a escalada
         if self.escaping > 0.0:
             # Manobra de fuga em curso: NAO redecide. Redisparar a meia-volta a
             # cada segundo invertia o objetivo sem parar, o rumo nunca assentava
@@ -132,6 +150,8 @@ class Compass:
         descendentes ESQUERDOS mais ativos, e quem faz isso e' o PFL3 DIREITO
         (medido: PFL3_R -> assimetria -0.83).
         """
+        if self.reversing > 0.0:
+            return 0.5, 0.5                     # re' reta: zero comando de curva
         e = float(np.clip(self.error / np.pi * gain, -1.0, 1.0))
         return 0.5 - 0.5 * e, 0.5 + 0.5 * e
 
