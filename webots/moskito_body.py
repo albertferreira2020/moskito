@@ -27,7 +27,6 @@ BRAIN_MS = 5.0         # tempo biologico por passo: metade do custo, loop 2x mai
 PS_NEAR = 250.0        # leitura de proximidade que ja' conta como parede
 PS_LOOM = 1800.0       # leitura frontal que dispara o reflexo de fuga
 PS_STUCK = 2600.0      # encostado na parede
-MAX_OMEGA = 7.536      # rad/s, limite do e-puck v2
 WHEEL_R = 0.0205       # m
 MET_DIST = 0.30        # fracao da imagem ocupada que conta como "encontrou"
 
@@ -75,11 +74,18 @@ def main() -> None:
         m.setPosition(float("inf"))
         m.setVelocity(0.0)
 
+    # Pergunta ao motor em vez de assumir. e-puck v1 = 6.28 rad/s, v2 = 7.536;
+    # a margem evita que arredondamento de float dispare o aviso do Webots.
+    max_omega = min(left.getMaxVelocity(), right.getMaxVelocity()) * 0.995
+    v_max = max_omega * WHEEL_R
+
     print("carregando conectoma...", flush=True)
     w, _, ports = load(Path(__file__).resolve().parents[1] / "data/brain.npz")
-    body = Body(Brain(w, seed=11), ports, Drives(), seed=11)
+    body = Body(Brain(w, seed=11), ports, Drives(), seed=11, v_max=v_max)
     mb = MushroomBody(n_in=16 * 12, seed=11) if cam is not None else None
     print(f"pronto: {w.shape[0]:,} neuronios, dia da mosca = {DAY_MINUTES:.0f} min", flush=True)
+    print(f"motor: {max_omega / 0.995:.3f} rad/s -> {v_max:.3f} m/s "
+          f"({'v2' if max_omega > 7 else 'v1 -- recarregue o mundo para pegar version 2'})", flush=True)
 
     step, stuck_for = 0, 0
     while robot.step(dt) != -1:
@@ -113,8 +119,8 @@ def main() -> None:
                            place_novelty=novelty, stuck=stuck,
                            met_someone=tgt_size > MET_DIST)
 
-        left.setVelocity(float(np.clip(vl / WHEEL_R, -MAX_OMEGA, MAX_OMEGA)))
-        right.setVelocity(float(np.clip(vr / WHEEL_R, -MAX_OMEGA, MAX_OMEGA)))
+        left.setVelocity(float(np.clip(vl / WHEEL_R, -max_omega, max_omega)))
+        right.setVelocity(float(np.clip(vr / WHEEL_R, -max_omega, max_omega)))
 
         step += 1
         if step % 50 == 0:

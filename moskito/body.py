@@ -26,10 +26,10 @@ from .drives import Drives
 # mais que isso nao acelera nada, so' satura -- e saturado o robo pivota em vez
 # de fazer curva, porque uma roda vai ao maximo e a outra ao minimo.
 # V_CRUISE deixa folga para a curva caber dentro do teto.
-V_CRUISE = 0.115
+CRUISE_FRAC = 0.75     # fracao do teto usada em cruzeiro; o resto e' folga p/ curva
 K_ANGULAR = 0.25
 K_REVERSE = 2.0
-V_MAX = 0.154
+V_MAX = 0.154          # so' um padrao: quem manda e' motor.getMaxVelocity()
 # Vies em repouso da assimetria descendente. Em w_syn=0.18 a resposta ja' e'
 # espelhada (+0.228 / -0.218), entao nao ha' vies a subtrair.
 TURN_BIAS = 0.0
@@ -37,8 +37,9 @@ TURN_BIAS = 0.0
 
 class Body:
     def __init__(self, brain: Brain, ports: dict[str, list[int]], drives: Drives | None = None,
-                 seed: int = 0):
+                 seed: int = 0, v_max: float = V_MAX):
         self.brain, self.ports = brain, ports
+        self.v_max = v_max
         self.drives = drives or Drives()
         self.inject = np.zeros(brain.n, dtype=np.float32)
         self.rng = np.random.default_rng(seed)
@@ -118,15 +119,16 @@ class Body:
         # calibrado a populacao descendente fica em 0-1 Hz, insuficiente para
         # dirigir velocidade. DNp09 tambem nao dispara (inibicao da rede).
         # O steering acima E' do conectoma; isto aqui e' o vies central.
-        forward = V_CRUISE * self.drives.drive_forward()
+        forward = CRUISE_FRAC * self.v_max * self.drives.drive_forward()
         reverse = K_REVERSE * r("MDN")
 
         # Steering e' IPSILATERAL: descendentes mais ativos de um lado fazem a
         # mosca virar para AQUELE lado (DNa02 direito -> curva a direita).
         # Combinado com H2 sendo contralateral, fecha certo: obstaculo a
         # esquerda -> H2_L -> descendentes direitos -> vira a direita, desvia.
-        v = float(np.clip(forward - reverse, -V_MAX, V_MAX))
-        return float(np.clip(v + turn, -V_MAX, V_MAX)), float(np.clip(v - turn, -V_MAX, V_MAX))
+        vm = self.v_max
+        v = float(np.clip(forward - reverse, -vm, vm))
+        return float(np.clip(v + turn, -vm, vm)), float(np.clip(v - turn, -vm, vm))
 
     def rates(self) -> dict[str, float]:
         keys = ("DN_L", "DN_R", "DNa02_L", "DNa02_R", "MDN")
