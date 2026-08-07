@@ -22,13 +22,14 @@ export DYLD_LIBRARY_PATH="$WEBOTS/lib/controller:${DYLD_LIBRARY_PATH:-}"
 ROBOT="${ROBOT_NAME:-moskito}"
 
 # O Webots sobe na 1234, mas cai para 1235, 1236... se ja' houver outra
-# instancia aberta. Ele publica um socket em <tmp>/webots/ipc/<porta>/<robo>,
-# entao da' para descobrir a porta em vez de adivinhar.
+# instancia aberta. Ele publica o socket em
+#     /tmp/webots/<usuario>/<porta>/ipc/<robo>/extern
+# -- usuario e porta vem ANTES do "ipc", nao depois.
 if [ -z "${WEBOTS_CONTROLLER_URL:-}" ]; then
   PORT=""
-  for d in "${TMPDIR:-/tmp/}webots/ipc/"*/ "/tmp/webots/ipc/"*/; do
-    [ -e "$d$ROBOT" ] || continue
-    PORT="$(basename "$d")"
+  for d in /tmp/webots/"$USER"/*/ipc/"$ROBOT"; do
+    [ -e "$d" ] || continue
+    PORT="$(basename "$(dirname "$(dirname "$d")")")"
   done
   if [ -z "$PORT" ]; then
     echo "aviso: nao achei o socket de '$ROBOT'; o mundo esta' aberto e em play?"
